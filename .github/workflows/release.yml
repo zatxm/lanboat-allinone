@@ -77,7 +77,7 @@ jobs:
           - {runner: windows-2025, goos: windows, goarch: amd64}
           - {runner: windows-11-arm, goos: windows, goarch: arm64}
           - {runner: macos-15-intel, goos: darwin, goarch: amd64}
-          - {runner: macos-15, goos: darwin, goarch: arm64}
+          - {runner: macos-26, goos: darwin, goarch: arm64}
     runs-on: ${{ matrix.runner }}
     defaults:
       run:

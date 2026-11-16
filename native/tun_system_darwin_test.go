@@ -10,7 +10,7 @@ import (
 	"unsafe"
 )
 
-func assertTUNSystemDNS(t *testing.T, r *Runtime) {
+func assertTUNSystemConfiguration(t *testing.T, r *Runtime) {
 	text, e := tunCommand("/usr/sbin/scutil", "", "--dns")
 	if e != nil || !strings.Contains(text, "172.19.0.2") {
 		t.Fatal("macOS DNS resolver was not published", text, e)

@@ -87,12 +87,8 @@ func (r *Runtime) refreshWindowsEgress(exclude uint64) error {
 		index := int32(binary.NativeEndian.Uint32(b[8:]))
 		metric := uint64(binary.NativeEndian.Uint32(b[84:]))
 		// GetIpInterfaceEntry adds the interface cost to the route's own metric.
-		var storage [24]uint64
-		iface := unsafe.Slice((*byte)(unsafe.Pointer(&storage[0])), 192)
-		binary.NativeEndian.PutUint16(iface[:], family)
-		copy(iface[8:16], b[:8])
-		if c, _, _ := tunIPHelper.NewProc("GetIpInterfaceEntry").Call(uintptr(unsafe.Pointer(&iface[0]))); c == 0 {
-			metric += uint64(binary.NativeEndian.Uint32(iface[148:]))
+		if iface, err := winIPInterface(binary.NativeEndian.Uint64(b), family); err == nil {
+			metric += uint64(iface.Metric)
 		}
 		if family == 2 && metric < metric4 {
 			best4, metric4 = index, metric

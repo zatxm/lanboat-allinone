@@ -28,6 +28,7 @@ func TestTUNSystemDevice(t *testing.T) {
 	writeRules("203.0.113.21/32", "2001:db8::21/128")
 	cfg := Config{Inbounds: []Inbound{{Type: "tun", Tag: "tun", AutoRoute: true, StrictRoute: true, DNSMode: "native", RouteAddressSet: []string{"capture"}}}, Outbounds: []Outbound{out}, Route: Route{RuleSet: []RuleSet{{Type: "local", Tag: "capture", Path: path, Format: "source"}}}, DNS: DNSConfig{Servers: []DNSServer{{Type: "hosts", Tag: "hosts", Predefined: map[string][]string{"tun.test": {"192.0.2.9"}}}}, Final: "hosts"}}
 	r := newTestRuntime(t, cfg)
+	assertTUNSystemConfiguration(t, r)
 	for _, address := range []string{"203.0.113.21:443", "[2001:db8::21]:443"} {
 		c, e := net.DialTimeout("tcp", address, 3*time.Second)
 		if e != nil {
@@ -114,7 +115,7 @@ func TestTUNSystemDevice(t *testing.T) {
 		c.Close()
 		t.Fatal("old route remained captured")
 	}
-	assertTUNSystemDNS(t, r)
+	assertTUNSystemConfiguration(t, r)
 	name := r.Address("tun")
 	r.Close()
 	if _, e := net.InterfaceByName(name); e == nil {

@@ -17,7 +17,7 @@ jobs:
           - {runner: windows-2025, goos: windows, goarch: amd64}
           - {runner: windows-11-arm, goos: windows, goarch: arm64}
           - {runner: macos-15-intel, goos: darwin, goarch: amd64}
-          - {runner: macos-15, goos: darwin, goarch: arm64}
+          - {runner: macos-26, goos: darwin, goarch: arm64}
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
@@ -52,10 +52,41 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $testArgs = @('-test.run=^(TestTUN|TestUTUN)', '-test.v', '-test.timeout=5m')
-          & .cache/tun-platform/native.test.exe @testArgs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tracing = $false
+          if (Get-Command pktmon.exe -ErrorAction SilentlyContinue) {
+            pktmon filter remove
+            $filtersOK = $LASTEXITCODE -eq 0
+            pktmon filter add LanboatIPv4 -i 203.0.113.21
+            $filtersOK = $filtersOK -and ($LASTEXITCODE -eq 0)
+            pktmon filter add LanboatIPv6 -i 2001:db8::21
+            $filtersOK = $filtersOK -and ($LASTEXITCODE -eq 0)
+            if ($filtersOK) {
+              pktmon start --capture --comp nics --pkt-size 0 --file-name .cache/tun-platform/packets.etl
+              $tracing = $LASTEXITCODE -eq 0
+            }
+          }
+          try {
+            $testArgs = @('-test.run=^(TestTUN|TestUTUN)', '-test.v', '-test.timeout=5m')
+            & .cache/tun-platform/native.test.exe @testArgs 2>&1 | Tee-Object .cache/tun-platform/tests.log
+            $code = $LASTEXITCODE
+          } finally {
+            if ($tracing) {
+              pktmon stop
+              pktmon etl2txt .cache/tun-platform/packets.etl --out .cache/tun-platform/packets.txt
+            }
+          }
+          exit $code
       - name: Unix device tests in disposable runner
         if: runner.os != 'Windows'
         shell: bash
         run: sudo .cache/tun-platform/native.test '-test.run=^(TestNativeTUNNamespace|TestTUN|TestUTUN)' -test.v -test.timeout=5m
+      - name: Preserve Windows TUN diagnostics
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: tun-diagnostics-${{ matrix.goarch }}
+          path: |
+            .cache/tun-platform/tests.log
+            .cache/tun-platform/packets.txt
+            .cache/tun-platform/packets.etl
+          if-no-files-found: warn

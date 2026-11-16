@@ -363,33 +363,27 @@ func openTUN(r *Runtime, in Inbound) (*tunTunnel, error) {
 			t.cleanup()
 		}
 	}()
-	netsh, e := winSystemPath("netsh.exe")
-	if e != nil {
-		return nil, e
-	}
 	mtu := in.MTU
 	if mtu == 0 {
 		mtu = 1500
 	}
+	configured := make(map[uint16]bool, 2)
 	for _, value := range tunAddresses(in) {
 		p, _ := netip.ParsePrefix(value)
-		family := "ipv4"
+		family := uint16(2)
 		if p.Addr().Is6() {
-			family = "ipv6"
+			family = 23
 		}
-		args := []string{"interface", family, "add", "address", "interface=" + name, "address=" + p.String(), "store=active"}
-		if p.Addr().Is4() {
-			args = []string{"interface", family, "add", "address", "name=" + name, "address=" + p.Addr().String(), "mask=" + net.IP(net.CIDRMask(p.Bits(), 32)).String(), "store=active"}
+		if !configured[family] {
+			if e = winConfigureIPInterface(d.luid, family, uint32(mtu)); e != nil {
+				return nil, e
+			}
+			configured[family] = true
 		}
-		if _, e = tunCommand(netsh, "", args...); e != nil {
+		if e = winAddAddress(r.ctx, d.luid, p); e != nil {
 			return nil, e
 		}
 		t.addLocal(p.Addr())
-	}
-	for _, family := range []string{"ipv4", "ipv6"} {
-		if _, e = tunCommand(netsh, "", "interface", family, "set", "subinterface", name, "mtu="+strconv.Itoa(mtu), "store=active"); e != nil {
-			return nil, e
-		}
 	}
 	if in.AutoRoute {
 		t.routes = &tunRouteState{add: func(p netip.Prefix) error { return winChangeRoute(d.luid, p, true) }, remove: func(p netip.Prefix) error { return winChangeRoute(d.luid, p, false) }}
