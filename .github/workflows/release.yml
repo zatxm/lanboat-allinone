@@ -1,16 +1,15 @@
-name: Build, test and release
+name: Build release binaries
 
 on:
-  push:
-  pull_request:
-  workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: true
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -136,9 +135,8 @@ jobs:
     uses: ./.github/workflows/tun-platforms.yml
 
   publish:
-    name: Publish downloads
+    name: Upload release binaries
     needs: [build, verify, tun]
-    if: github.event_name != 'pull_request' && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -149,13 +147,11 @@ jobs:
           path: dist
           merge-multiple: true
           skip-decompress: true
-      - name: Create release after every platform passes
+      - name: Attach binaries after every platform passes
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
-          COMMIT: ${{ github.sha }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         shell: bash
         run: |
           set -euo pipefail
@@ -166,21 +162,4 @@ jobs:
           done
           test "${#binaries[@]}" -eq 6
           sha256sum "${binaries[@]}" | sed 's|  dist/|  |' > dist/SHA256SUMS
-          tag="build-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT"
-          if [[ $REF_TYPE == tag ]]; then tag=$REF_NAME; fi
-          cat > "$RUNNER_TEMP/notes.md" <<EOF
-          Commit: $COMMIT
-
-          Windows/Linux: stripped executables compressed with UPX5.3.0 using upx -9 -q.
-          macOS: stripped native executables; UPX disables modern macOS support.
-          Six native platform/architecture checks and TUN platform tests passed before publication.
-          Windows TUN requires the official signed wintun.dll beside the executable.
-          Download the executable directly; no ZIP/XZ extraction is needed.
-          SHA256SUMS contains executable checksums.
-          EOF
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" dist/* --clobber
-            gh release edit "$tag" --notes-file "$RUNNER_TEMP/notes.md" --latest
-          else
-            gh release create "$tag" dist/* --target "$COMMIT" --title "Lanboat $tag" --notes-file "$RUNNER_TEMP/notes.md" --latest
-          fi
+          gh release upload "$RELEASE_TAG" dist/* --clobber
