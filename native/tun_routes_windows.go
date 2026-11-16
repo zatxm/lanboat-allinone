@@ -35,7 +35,7 @@ func winRouteAddress(ip netip.Addr) (a [28]byte) {
 	copy(a[offset:], ip.AsSlice())
 	return
 }
-func winChangeRoute(luid uint64, p netip.Prefix, add bool) error {
+func winRouteEntry(luid uint64, p netip.Prefix) winRouteRow {
 	row := winRouteRow{}
 	tunIPHelper.NewProc("InitializeIpForwardEntry").Call(uintptr(unsafe.Pointer(&row)))
 	row.LUID = luid
@@ -45,7 +45,14 @@ func winChangeRoute(luid uint64, p netip.Prefix, add bool) error {
 	if p.Addr().Is6() {
 		row.NextHop = winRouteAddress(netip.IPv6Unspecified())
 	}
+	// The API initializer leaves sentinel metrics and loopback flags, not a usable TUN route.
+	row.SitePrefixLength, row.Metric = 0, 0
+	row.Loopback, row.Autoconfigure, row.Publish, row.Immortal = 0, 0, 0, 0
 	row.Protocol = 3
+	return row
+}
+func winChangeRoute(luid uint64, p netip.Prefix, add bool) error {
+	row := winRouteEntry(luid, p)
 	name := "DeleteIpForwardEntry2"
 	if add {
 		name = "CreateIpForwardEntry2"
