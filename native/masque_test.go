@@ -337,7 +337,7 @@ func masqueEcho(t *testing.T, network, address string) string {
 		}()
 		return l.Addr().String()
 	}
-	p, e := net.ListenPacket("udp", address)
+	p, e := (ListenOptions{}).listenPacket(context.Background(), "udp", address)
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -13,6 +13,14 @@ func dialSocketOptions(o DialOptions, network string, raw syscall.RawConn) error
 				result = syscall.SetsockoptInt(int(fd), level, option, value)
 			}
 		}
+		if strings.HasPrefix(network, "udp") {
+			// Darwin's default 9216-byte send buffer rejects larger UDP datagrams.
+			var size int
+			size, result = syscall.GetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_SNDBUF)
+			if result == nil && size < 1<<16 {
+				set(syscall.SOL_SOCKET, syscall.SO_SNDBUF, 1<<16)
+			}
+		}
 		if o.ReuseAddr {
 			set(syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
 		}

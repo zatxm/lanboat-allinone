@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    name: Build ${{ matrix.goos == 'darwin' && 'macOS' || matrix.goos }}/${{ matrix.goarch }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -65,7 +65,7 @@ jobs:
           if-no-files-found: error
 
   verify:
-    name: Run ${{ matrix.goos }}/${{ matrix.goarch }}
+    name: Run ${{ matrix.goos == 'darwin' && 'macOS' || matrix.goos }}/${{ matrix.goarch }}
     needs: build
     timeout-minutes: 20
     strategy:
@@ -116,14 +116,14 @@ jobs:
           mkdir -p build
           go test . -run '^TestIndependentPublicAPI$' -count=1 -timeout=3m
           go test ./internal/nativecmd -count=1 -timeout=3m
-          tests='^(TestIndependentProtocolMatrix|TestMultipleProtocolInbounds|TestShadowsocksCiphers|TestAuthenticationNeverFallsBack|TestVMessIndependentTCPUDP|TestQUICProxyIndependent|TestSSHIndependent|TestSnellIndependentTCPUDP|TestBrookRoundTrip|TestJuicityIndependent|TestNaiveIndependent|TestMieruIndependent|TestTrustTunnelIndependent|TestDNSListenersTCPUDP|TestDNSQUICIndependent|TestDNSQueryOwnership|TestDNSStreamSequentialFrames|TestDNSListenerShutdownCancelsQuery|TestDirectInboundMixedListeners|TestWireGuardNoiseAndReplay)$'
+          tests='^(TestIndependentProtocolMatrix|TestMultipleProtocolInbounds|TestShadowsocksCiphers|TestAuthenticationNeverFallsBack|TestVMessIndependentTCPUDP|TestQUICProxyIndependent|TestSSHIndependent|TestSnellIndependentTCPUDP|TestBrookRoundTrip|TestJuicityIndependent|TestNaiveIndependent|TestMieruIndependent|TestTrustTunnelIndependent|TestDNSListenersTCPUDP|TestDNSQUICIndependent|TestDNSQueryOwnership|TestDNSStreamSequentialFrames|TestDNSListenerShutdownCancelsQuery|TestDirectInboundMixedListeners|TestWireGuardNoiseAndReplay|TestUDPLargeDatagrams)$'
           go test ./native -run "$tests" -count=1 -timeout=8m -json | tee build/native-tests.jsonl
           python - <<'PY'
           import json
           from pathlib import Path
           events = [json.loads(line) for line in Path('build/native-tests.jsonl').read_text().splitlines()]
           assert not any(e['Action'] in ('fail', 'skip') for e in events)
-          assert len({e['Test'] for e in events if e['Action'] == 'pass' and '/' not in e.get('Test', '') and 'Test' in e}) == 20
+          assert len({e['Test'] for e in events if e['Action'] == 'pass' and '/' not in e.get('Test', '') and 'Test' in e}) == 21
           PY
       - uses: actions/upload-artifact@v7
         if: always()

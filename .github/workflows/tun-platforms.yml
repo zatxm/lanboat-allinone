@@ -6,7 +6,7 @@ permissions:
   contents: read
 jobs:
   tun:
-    name: TUN ${{ matrix.goos }}/${{ matrix.goarch }}
+    name: TUN ${{ matrix.goos == 'darwin' && 'macOS' || matrix.goos }}/${{ matrix.goarch }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -52,7 +52,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          & .cache/tun-platform/native.test.exe '-test.run=^(TestTUN|TestUTUN)' -test.v -test.timeout=5m
+          $testArgs = @('-test.run=^(TestTUN|TestUTUN)', '-test.v', '-test.timeout=5m')
+          & .cache/tun-platform/native.test.exe @testArgs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Unix device tests in disposable runner
         if: runner.os != 'Windows'

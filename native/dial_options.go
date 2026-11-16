@@ -74,7 +74,13 @@ func (o DialOptions) validate() error {
 }
 
 func (r *Runtime) socketControl(network, address string, raw syscall.RawConn) error {
-	return r.socketControlFor(DialOptions{}, network, address, raw)
+	if err := r.socketControlFor(DialOptions{}, network, address, raw); err != nil {
+		return err
+	}
+	if strings.HasPrefix(network, "udp") {
+		return dialSocketOptions(DialOptions{}, network, raw)
+	}
+	return nil
 }
 
 func (r *Runtime) newDialer(o DialOptions, network, address string) (*net.Dialer, error) {
