@@ -10,7 +10,8 @@
 | [TUN使用](tun.md) | 系统流量接管、权限和平台要求 |
 | [协议与示例](protocols.md) | 按协议选择示例配置 |
 | [常见问题](troubleshooting.md) | 检查配置、连接、端口和DNS |
+| [下载与运行](releases.md) | 选择程序文件、校验和启动 |
 
-所有命令中的`lanboat-allinone`都指实际可执行文件路径。在源码目录构建后使用`./build/lanboat-allinone`，Windows使用`.\lanboat-allinone.exe`。
+所有命令中的`lanboat-allinone`都指实际可执行文件路径。下载文件名包含系统和架构，也可自行重命名后使用；Windows保留`.exe`后缀。启动方法见[下载与运行](releases.md)。
 
 配置示例中的服务器地址、密码和密钥用于演示，使用前请替换。相对文件路径以启动程序时的工作目录为基准。

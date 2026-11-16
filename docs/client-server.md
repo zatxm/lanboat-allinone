@@ -46,6 +46,24 @@ lanboat-allinone server -c server.json
 
 使用UDP协议时同时放行UDP。普通代理监听不需要管理员权限，使用小于1024的端口或TUN时按系统要求授权。
 
+## 同时启用多个入站
+
+一个服务端可以在`inbounds`数组中同时启用不同协议、不同端口，例如：
+
+```json
+{
+  "inbounds": [
+    {"type": "shadowsocks", "tag": "ss", "listen": "127.0.0.1", "listen_port": 8388, "method": "aes-256-gcm", "password": "replace-with-your-password"},
+    {"type": "socks", "tag": "socks", "listen": "127.0.0.1", "listen_port": 1081, "users": [{"username": "client", "password": "replace-with-your-password"}]},
+    {"type": "http", "tag": "http", "listen": "127.0.0.1", "listen_port": 8080, "users": [{"username": "client", "password": "replace-with-your-password"}]}
+  ],
+  "outbounds": [{"type": "direct", "tag": "direct"}],
+  "route": {"final": "direct"}
+}
+```
+
+每个入站使用独立tag，监听地址和端口不能与其他监听冲突。远程访问时修改`listen`并放行对应端口。[完整多入站示例](../examples/multiple-inbounds-server.json)可直接复制后修改。
+
 ## Hysteria2
 
 使用[客户端示例](../examples/independent-hysteria2-client.json)和[服务端示例](../examples/independent-hysteria2-server.json)。

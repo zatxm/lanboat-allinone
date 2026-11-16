@@ -14,7 +14,17 @@
 
 ## 安装
 
-当前可使用Go1.27.3或更新版本从源码构建：
+从[Releases](https://github.com/zatxm/lanboat-allinone/releases)下载对应系统与架构的可执行文件，无需解压：
+
+| 系统 | 架构 | 文件 |
+| --- | --- | --- |
+| Windows | amd64、arm64 | `.exe`可执行文件 |
+| Linux | amd64、arm64 | 原生可执行文件 |
+| macOS | Intel amd64、Apple Silicon arm64 | 原生可执行文件 |
+
+[下载、校验和运行说明](docs/releases.md)。Linux/macOS下载后需先执行`chmod +x 文件名`，然后按配置启动。
+
+也可使用Go1.27.3或更新版本从源码构建：
 
 ```bash
 git clone https://github.com/zatxm/lanboat-allinone.git
@@ -81,5 +91,6 @@ Hysteria2等TLS协议还需配置证书，见[客户端与服务端](docs/client
 - [TUN使用](docs/tun.md)：系统接管、平台要求和权限。
 - [协议与示例](docs/protocols.md)：按协议查找配置。
 - [常见问题](docs/troubleshooting.md)：配置错误、连接失败和日志排查。
+- [下载与运行](docs/releases.md)：选择程序文件、校验和启动。
 
 提交问题时请提供程序版本、操作系统、错误日志和已脱敏的配置。请删除密码、私钥、认证密钥和访问令牌。

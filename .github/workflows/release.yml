@@ -1,0 +1,186 @@
+name: Build, test and release
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {goos: linux, goarch: amd64}
+          - {goos: linux, goarch: arm64}
+          - {goos: windows, goarch: amd64}
+          - {goos: windows, goarch: arm64}
+          - {goos: darwin, goarch: amd64}
+          - {goos: darwin, goarch: arm64}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Install verified UPX5.3.0
+        if: matrix.goos != 'darwin'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 https://github.com/upx/upx/releases/download/v5.3.0/upx-5.3.0-amd64_linux.tar.xz -o "$RUNNER_TEMP/upx.tar.xz"
+          echo '79cea8a50b6fa102d10c7b79a419cd77dead3cc2d78661de2dc5e5815dc505c1  '"$RUNNER_TEMP/upx.tar.xz" | sha256sum --check
+          tar -xJf "$RUNNER_TEMP/upx.tar.xz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/upx-5.3.0-amd64_linux" >> "$GITHUB_PATH"
+      - name: Build and compress
+        id: binary
+        env:
+          TARGET_OS: ${{ matrix.goos }}
+          TARGET_ARCH: ${{ matrix.goarch }}
+        run: |
+          bash scripts/package-release.sh "$TARGET_OS" "$TARGET_ARCH"
+          binary="dist/lanboat-allinone-$TARGET_OS-$TARGET_ARCH"
+          if [[ $TARGET_OS == windows ]]; then binary+=.exe; fi
+          echo "path=$binary" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.binary.outputs.path }}
+          archive: false
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.binary.outputs.path }}.sha256
+          archive: false
+          if-no-files-found: error
+
+  verify:
+    name: Run ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: build
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: ubuntu-24.04, goos: linux, goarch: amd64}
+          - {runner: ubuntu-24.04-arm, goos: linux, goarch: arm64}
+          - {runner: windows-2025, goos: windows, goarch: amd64}
+          - {runner: windows-11-arm, goos: windows, goarch: arm64}
+          - {runner: macos-15-intel, goos: darwin, goarch: amd64}
+          - {runner: macos-15, goos: darwin, goarch: arm64}
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/download-artifact@v8
+        with:
+          name: lanboat-allinone-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+          skip-decompress: true
+          path: dist
+      - uses: actions/download-artifact@v8
+        with:
+          name: lanboat-allinone-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}.sha256
+          skip-decompress: true
+          path: dist
+      - name: Run the actual release executable
+        env:
+          TARGET_OS: ${{ matrix.goos }}
+          TARGET_ARCH: ${{ matrix.goarch }}
+        run: |
+          binary="dist/lanboat-allinone-$TARGET_OS-$TARGET_ARCH"
+          if [[ $TARGET_OS == windows ]]; then binary+=.exe; fi
+          python tests/check-release.py "$binary"
+      - name: Native API, protocols, DNS and multiple listeners
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          go test . -run '^TestIndependentPublicAPI$' -count=1 -timeout=3m
+          go test ./internal/nativecmd -count=1 -timeout=3m
+          tests='^(TestIndependentProtocolMatrix|TestMultipleProtocolInbounds|TestShadowsocksCiphers|TestAuthenticationNeverFallsBack|TestVMessIndependentTCPUDP|TestQUICProxyIndependent|TestSSHIndependent|TestSnellIndependentTCPUDP|TestBrookRoundTrip|TestJuicityIndependent|TestNaiveIndependent|TestMieruIndependent|TestTrustTunnelIndependent|TestDNSListenersTCPUDP|TestDNSQUICIndependent|TestDNSQueryOwnership|TestDNSStreamSequentialFrames|TestDNSListenerShutdownCancelsQuery|TestDirectInboundMixedListeners|TestWireGuardNoiseAndReplay)$'
+          go test ./native -run "$tests" -count=1 -timeout=8m -json | tee build/native-tests.jsonl
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          events = [json.loads(line) for line in Path('build/native-tests.jsonl').read_text().splitlines()]
+          assert not any(e['Action'] in ('fail', 'skip') for e in events)
+          assert len({e['Test'] for e in events if e['Action'] == 'pass' and '/' not in e.get('Test', '') and 'Test' in e}) == 20
+          PY
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: native-tests-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: build/native-tests.jsonl
+
+  tun:
+    uses: ./.github/workflows/tun-platforms.yml
+
+  publish:
+    name: Publish downloads
+    needs: [build, verify, tun]
+    if: github.event_name != 'pull_request' && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: lanboat-allinone-*
+          path: dist
+          merge-multiple: true
+          skip-decompress: true
+      - name: Create release after every platform passes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for checksum in dist/*.sha256; do (cd dist; sha256sum --check "$(basename "$checksum")"); done
+          binaries=()
+          for binary in dist/lanboat-allinone-*; do
+            if [[ $binary != *.sha256 ]]; then binaries+=("$binary"); fi
+          done
+          test "${#binaries[@]}" -eq 6
+          sha256sum "${binaries[@]}" | sed 's|  dist/|  |' > dist/SHA256SUMS
+          tag="build-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT"
+          if [[ $REF_TYPE == tag ]]; then tag=$REF_NAME; fi
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          Commit: $COMMIT
+
+          Windows/Linux: stripped executables compressed with UPX5.3.0 using upx -9 -q.
+          macOS: stripped native executables; UPX disables modern macOS support.
+          Six native platform/architecture checks and TUN platform tests passed before publication.
+          Windows TUN requires the official signed wintun.dll beside the executable.
+          Download the executable directly; no ZIP/XZ extraction is needed.
+          SHA256SUMS contains executable checksums.
+          EOF
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
+            gh release edit "$tag" --notes-file "$RUNNER_TEMP/notes.md" --latest
+          else
+            gh release create "$tag" dist/* --target "$COMMIT" --title "Lanboat $tag" --notes-file "$RUNNER_TEMP/notes.md" --latest
+          fi

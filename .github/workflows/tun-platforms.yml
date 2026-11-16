@@ -1,18 +1,29 @@
 name: TUN platform tests
 on:
+  workflow_call:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   tun:
+    name: TUN ${{ matrix.goos }}/${{ matrix.goarch }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+        include:
+          - {runner: ubuntu-24.04, goos: linux, goarch: amd64}
+          - {runner: ubuntu-24.04-arm, goos: linux, goarch: arm64}
+          - {runner: windows-2025, goos: windows, goarch: amd64}
+          - {runner: windows-11-arm, goos: windows, goarch: arm64}
+          - {runner: macos-15-intel, goos: darwin, goarch: amd64}
+          - {runner: macos-15, goos: darwin, goarch: arm64}
+    runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: Linux dependencies
@@ -28,20 +39,22 @@ jobs:
       - name: Obtain verified Windows driver for testing
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          DRIVER_ARCH: ${{ matrix.goarch }}
         run: |
           $path = '.cache/tun-platform/wintun.zip'
           Invoke-WebRequest https://www.wintun.net/builds/wintun-0.14.1.zip -OutFile $path
           $expected = '07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51'
           if ((Get-FileHash $path -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw 'Wintun archive checksum mismatch' }
           Expand-Archive $path .cache/tun-platform/driver
-          Copy-Item .cache/tun-platform/driver/wintun/bin/amd64/wintun.dll .cache/tun-platform/wintun.dll
+          Copy-Item ".cache/tun-platform/driver/wintun/bin/$env:DRIVER_ARCH/wintun.dll" .cache/tun-platform/wintun.dll
       - name: Windows device, DNS and WFP tests
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          & .cache/tun-platform/native.test.exe '-test.run=^(TestTUN|TestUTUN)' -test.v -test.timeout=90s
+          & .cache/tun-platform/native.test.exe '-test.run=^(TestTUN|TestUTUN)' -test.v -test.timeout=5m
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Unix device tests in disposable runner
         if: runner.os != 'Windows'
         shell: bash
-        run: sudo .cache/tun-platform/native.test '-test.run=^(TestNativeTUNNamespace|TestTUN|TestUTUN)' -test.v -test.timeout=90s
+        run: sudo .cache/tun-platform/native.test '-test.run=^(TestNativeTUNNamespace|TestTUN|TestUTUN)' -test.v -test.timeout=5m
