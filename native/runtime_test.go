@@ -115,7 +115,7 @@ func testOutbound(t *testing.T, in Inbound, address string) Outbound {
 
 func echoUDP(t *testing.T) string {
 	t.Helper()
-	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	conn, err := (ListenOptions{}).listenPacket(context.Background(), "udp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
