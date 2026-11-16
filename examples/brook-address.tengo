@@ -1,0 +1,17 @@
+text := import("text")
+
+decide := func() {
+    if in_address {
+        if text.has_suffix(in_address.domainaddress, "blocked.example:443") {
+            return {block: true}
+        }
+        brook := import("brook")
+        if in_address.ipaddress {
+            endpoint := brook.splithostport(in_address.ipaddress)
+            if is_error(endpoint) { return {block: true} }
+            if brook.isprivate(endpoint.host) { return {bypass: true} }
+        }
+    }
+}
+
+out := decide()

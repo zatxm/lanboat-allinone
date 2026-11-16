@@ -1,0 +1,31 @@
+{
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "hysteria2",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "password": "change-this-password",
+      "tls": {
+        "enabled": true,
+        "server_name": "localhost",
+        "certificate_path": "./server.crt"
+      },
+      "server_ports": [
+        "18443:18447"
+      ],
+      "hop_interval": "30s",
+      "hop_interval_max": "45s"
+    }
+  ],
+  "route": {
+    "final": "proxy"
+  }
+}

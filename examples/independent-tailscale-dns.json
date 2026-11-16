@@ -1,0 +1,14 @@
+{
+  "log": {"level": "info"},
+  "inbounds": [{"type": "mixed", "tag": "local", "listen": "127.0.0.1", "listen_port": 2080}],
+  "endpoints": [{"type": "tailscale", "tag": "tailnet", "auth_key": "replace-with-your-auth-key", "state_directory": "tailscale-state", "hostname": "lanboat", "on_demand": true}],
+  "dns": {
+    "servers": [
+      {"type": "local", "tag": "system"},
+      {"type": "tailscale", "tag": "tailnet-dns", "endpoint": "tailnet", "accept_search_domain": true}
+    ],
+    "rules": [{"preferred_by": "tailnet-dns", "action": "route", "server": "tailnet-dns"}],
+    "final": "system"
+  },
+  "route": {"default_domain_resolver": "system", "final": "tailnet"}
+}

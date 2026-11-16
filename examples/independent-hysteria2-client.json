@@ -1,0 +1,27 @@
+{
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "hysteria2",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 18443,
+      "password": "change-this-password",
+      "tls": {
+        "enabled": true,
+        "server_name": "localhost",
+        "certificate_path": "./server.crt"
+      }
+    }
+  ],
+  "route": {
+    "final": "proxy"
+  }
+}

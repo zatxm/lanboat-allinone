@@ -1,0 +1,14 @@
+{
+  "log": {"level": "info"},
+  "inbounds": [
+    {"type": "direct", "tag": "dns-in", "listen": "127.0.0.1", "listen_port": 1053}
+  ],
+  "dns": {
+    "servers": [{"type": "dhcp", "tag": "lan"}],
+    "final": "lan",
+    "timeout": "10s"
+  },
+  "route": {
+    "rules": [{"inbound": ["dns-in"], "action": "hijack-dns"}]
+  }
+}

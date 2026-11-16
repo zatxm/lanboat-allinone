@@ -1,0 +1,25 @@
+{
+  "inbounds": [
+    {
+      "type": "socks",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "shadowsocks",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 4000,
+      "method": "aes-256-gcm",
+      "password": "replace-with-ss-password",
+      "plugin": "kcptun",
+      "plugin_opts": "key=replace-with-transport-password;crypt=aes-256-gcm;version=2;mode=fast3;nocomp=true;datashard=10;parityshard=3;mtu=1350"
+    }
+  ],
+  "route": {
+    "final": "proxy"
+  }
+}

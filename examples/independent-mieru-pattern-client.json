@@ -1,0 +1,30 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 2080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "mieru",
+      "tag": "proxy",
+      "network": "tcp",
+      "server": "127.0.0.1",
+      "server_port": 8443,
+      "username": "client",
+      "password": "replace-with-a-long-random-password",
+      "user_hint": true,
+      "multiplexing": "high",
+      "traffic_pattern": "GgQIARABIggIARABGAYgCCoFCEAQgAEyBAgBEHA="
+    }
+  ],
+  "route": {
+    "final": "proxy"
+  }
+}

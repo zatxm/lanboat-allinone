@@ -1,0 +1,5 @@
+{
+  "inbounds": [{"type":"brook","tag":"server","listen":"127.0.0.1","listen_port":9999,"password":"replace-this-password","tengo":"out := {block: in_address.domainaddress == \"blocked.example:443\"}"}],
+  "outbounds": [{"type":"direct","tag":"direct"}],
+  "route": {"final":"direct"}
+}

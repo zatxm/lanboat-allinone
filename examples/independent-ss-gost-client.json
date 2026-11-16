@@ -1,0 +1,27 @@
+{
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "shadowsocks",
+      "tag": "proxy",
+      "method": "aes-256-gcm",
+      "password": "replace-with-a-strong-password",
+      "plugin": "gost",
+      "plugin_opts": "mode=mwss;host=localhost;path=/ws",
+      "server": "127.0.0.1",
+      "server_port": 8388,
+      "tls": {
+        "enabled": true,
+        "server_name": "localhost",
+        "certificate_path": "server-ca.crt"
+      }
+    }
+  ]
+}

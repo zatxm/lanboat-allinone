@@ -1,0 +1,22 @@
+{
+  "inbounds": [
+    {
+      "type": "hysteria2",
+      "tag": "server",
+      "listen": "127.0.0.1",
+      "listen_port": 18445,
+      "users": [
+        {
+          "password": "change-this-password"
+        }
+      ],
+      "ignore_client_bandwidth": true,
+      "tls": {
+        "enabled": true,
+        "certificate_path": "server.crt",
+        "key_path": "server.key"
+      },
+      "congestion_control": "bbr3"
+    }
+  ]
+}

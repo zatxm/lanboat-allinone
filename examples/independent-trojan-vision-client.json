@@ -1,0 +1,9 @@
+{
+  "inbounds": [{"type": "mixed", "tag": "local", "listen": "127.0.0.1", "listen_port": 1080}],
+  "outbounds": [{
+    "type": "trojan", "tag": "proxy", "server": "proxy.example", "server_port": 443,
+    "password": "replace-with-server-password", "flow": "xtls-rprx-vision",
+    "tls": {"enabled": true, "server_name": "proxy.example"}
+  }],
+  "route": {"final": "proxy"}
+}

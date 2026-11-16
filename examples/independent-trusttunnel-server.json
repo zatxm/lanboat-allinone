@@ -1,0 +1,19 @@
+{
+  "log": {"level": "info"},
+  "inbounds": [
+    {
+      "type": "trusttunnel", "tag": "trust-h2", "http_version": 2,
+      "listen": "127.0.0.1", "listen_port": 48443,
+      "users": [{"username": "example-user", "password": "replace-this-example-password"}],
+      "tls": {"enabled": true, "certificate_path": "server.crt", "key_path": "server.key"}
+    },
+    {
+      "type": "trusttunnel", "tag": "trust-h3", "http_version": 3,
+      "listen": "127.0.0.1", "listen_port": 48443,
+      "users": [{"username": "example-user", "password": "replace-this-example-password"}],
+      "tls": {"enabled": true, "certificate_path": "server.crt", "key_path": "server.key"}
+    }
+  ],
+  "outbounds": [{"type": "direct", "tag": "direct"}],
+  "route": {"final": "direct"}
+}

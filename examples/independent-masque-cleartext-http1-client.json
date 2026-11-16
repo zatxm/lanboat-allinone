@@ -1,0 +1,28 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 2080
+    }
+  ],
+  "endpoints": [
+    {
+      "type": "masque-client",
+      "tag": "vpn",
+      "server": "127.0.0.1",
+      "server_port": 8443,
+      "version": 1,
+      "disable_version_fallback": true,
+      "username": "client",
+      "password": "replace-with-password"
+    }
+  ],
+  "route": {
+    "final": "vpn"
+  }
+}

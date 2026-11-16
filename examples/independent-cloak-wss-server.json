@@ -1,0 +1,19 @@
+{
+  "inbounds": [
+    {
+      "type": "shadowsocks",
+      "tag": "server",
+      "method": "aes-256-gcm",
+      "password": "replace-with-ss-password",
+      "plugin": "cloak",
+      "plugin_opts": "UID=BwcHBwcHBwcHBwcHBwcHBw==;ProxyMethod=shadowsocks;Transport=websocket;EncryptionMethod=chacha20-poly1305;ServerName=localhost;NumConn=4;StreamTimeout=300;PrivateKey=BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=;RedirAddr=example.com:443",
+      "listen": "127.0.0.1",
+      "listen_port": 4000,
+      "tls": {
+        "enabled": true,
+        "certificate_path": "server.crt",
+        "key_path": "server.key"
+      }
+    }
+  ]
+}

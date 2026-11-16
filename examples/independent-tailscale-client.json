@@ -1,0 +1,20 @@
+{
+  "log": {"level": "info"},
+  "inbounds": [
+    {"type": "mixed", "tag": "local", "listen": "127.0.0.1", "listen_port": 2080}
+  ],
+  "endpoints": [
+    {
+      "type": "tailscale",
+      "tag": "tailnet",
+      "auth_key": "replace-with-your-auth-key",
+      "control_url": "https://controlplane.tailscale.com",
+      "state_directory": "tailscale-state",
+      "hostname": "lanboat",
+      "exit_node": "",
+      "force_derp": false,
+      "accept_routes": false
+    }
+  ],
+  "route": {"final": "tailnet"}
+}

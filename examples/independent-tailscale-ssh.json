@@ -1,0 +1,20 @@
+{
+  "log": {"level": "info"},
+  "endpoints": [
+    {
+      "type": "tailscale",
+      "tag": "tailnet",
+      "auth_key": "replace-with-your-auth-key",
+      "state_directory": "tailscale-state",
+      "hostname": "lanboat-ssh",
+      "ssh_server": {
+        "enabled": true,
+        "disable_pty": false,
+        "disable_sftp": false,
+        "disable_forwarding": false
+      }
+    }
+  ],
+  "outbounds": [{"type": "direct", "tag": "direct"}],
+  "route": {"final": "direct"}
+}

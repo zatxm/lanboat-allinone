@@ -1,0 +1,15 @@
+{
+  "inbounds": [{"type": "mixed", "tag": "mixed", "listen": "127.0.0.1", "listen_port": 1080}],
+  "outbounds": [{
+    "type": "sudoku", "tag": "proxy",
+    "server": "127.0.0.1", "server_port": 10801,
+    "sudoku": {
+      "private_key": "b1ec294d5dba60a800e1ef8c3423d5a176093f0d8c432e01bc24895d6828140aac81776fc0b44c3c08e418eb702b5e0a4c0a2dd458f8284d67f0d8d2d4bfdd0e",
+      "aead": "chacha20-poly1305", "ascii": "up_ascii_down_entropy",
+      "padding_min": 5, "padding_max": 15,
+      "httpmask": {"mode": "auto", "path_root": "assets"}
+    },
+    "multiplex": {"enabled": true}
+  }],
+  "route": {"final": "proxy"}
+}

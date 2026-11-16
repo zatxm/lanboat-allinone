@@ -1,0 +1,4 @@
+{
+  "inbounds": [{"type": "hysteria2", "tag": "server", "listen": "0.0.0.0", "listen_port": 443, "users": [{"password": "REPLACE_WITH_PROXY_PASSWORD"}], "tls": {"enabled": true, "certificate_provider": {"type": "acme", "domain": ["proxy.example.org"], "email": "admin@example.org", "disable_http_challenge": true, "key_type": "p384"}}}],
+  "outbounds": [{"type": "direct", "tag": "direct"}]
+}

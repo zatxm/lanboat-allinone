@@ -1,0 +1,28 @@
+{
+  "log": {"level": "info"},
+  "inbounds": [
+    {"type": "mixed", "tag": "local", "listen": "127.0.0.1", "listen_port": 1080}
+  ],
+  "endpoints": [
+    {
+      "type": "wireguard",
+      "tag": "proxy",
+      "system": false,
+      "mtu": 1408,
+      "address": ["10.50.0.2/32"],
+      "private_key": "CrZ9xNq/fuXf4v1Xn7o/Z1QDJQUMWrAZXq0f5ZrbHWQ=",
+      "listen_port": 0,
+      "peers": [
+        {
+          "address": "127.0.0.1",
+          "port": 51820,
+          "public_key": "C+j6sIsFUoipBstCdiC3Td3Tx8XcOzqtD1yiT6RHQjM=",
+          "allowed_ips": ["0.0.0.0/0"],
+          "persistent_keepalive_interval": 25,
+          "reserved": [0, 0, 0]
+        }
+      ]
+    }
+  ],
+  "route": {"final": "proxy"}
+}

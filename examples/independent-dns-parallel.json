@@ -1,0 +1,23 @@
+{
+  "log": {"level": "info"},
+  "inbounds": [{"type": "mixed", "tag": "local", "listen": "127.0.0.1", "listen_port": 1080}],
+  "outbounds": [{"type": "direct", "tag": "direct"}],
+  "route": {"default_domain_resolver": "system", "rules": [{"port": 53, "action": "hijack-dns"}]},
+  "dns": {
+    "servers": [
+      {"type": "local", "tag": "system"},
+      {"type": "udp", "tag": "remote", "server": "1.1.1.1"}
+    ],
+    "final": "remote",
+    "rules": [
+      {"action": "evaluate", "server": "system", "tag": "local-answer"},
+      {"match_response": "local-answer", "ip_cidr": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"], "race": true, "action": "respond"},
+      {"action": "evaluate", "server": "remote", "tag": "remote-answer", "speculative": true},
+      {"match_response": "remote-answer", "response_rcode": "NOERROR", "race": true, "action": "respond"},
+      {"action": "route", "server": "remote"}
+    ]
+  },
+  "experimental": {
+    "cache_file": {"enabled": true, "path": "lanboat-cache.db", "store_dns": true, "buffer_size": "1MB", "flush_interval": "30s"}
+  }
+}

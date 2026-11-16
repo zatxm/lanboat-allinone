@@ -1,0 +1,37 @@
+{
+  "http_clients": [
+    {
+      "tag": "rule-download",
+      "engine": "go",
+      "version": 3,
+      "disable_version_fallback": true
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "default_http_client": "rule-download",
+    "rule_set": [
+      {
+        "type": "remote",
+        "tag": "remote-block",
+        "format": "binary",
+        "url": "https://rules.example.com/block.srs",
+        "update_interval": "1d"
+      }
+    ],
+    "rules": [
+      {
+        "rule_set": [
+          "remote-block"
+        ],
+        "action": "reject"
+      }
+    ],
+    "final": "direct"
+  }
+}

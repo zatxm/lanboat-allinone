@@ -1,0 +1,6 @@
+{
+  "inbounds": [{"type": "shadowsocks", "tag": "server", "listen": "127.0.0.1", "listen_port": 8443,
+    "method": "aes-128-gcm", "password": "replace-with-your-password",
+    "plugin": "v2ray-plugin", "plugin_opts": "server;mode=quic;tls;host=localhost;cert=server.crt;key=server.key"}],
+  "outbounds": [{"type": "direct", "tag": "direct"}]
+}

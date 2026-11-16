@@ -1,0 +1,20 @@
+{
+  "inbounds": [
+    {
+      "type": "trojan",
+      "tag": "server",
+      "listen": "127.0.0.1",
+      "listen_port": 8443,
+      "users": [{"password": "REPLACE_WITH_PROXY_PASSWORD"}],
+      "tls": {
+        "enabled": true,
+        "certificate_provider": {
+          "type": "cloudflare-origin-ca",
+          "domain": ["example.com"],
+          "origin_ca_key": "REPLACE_WITH_CLOUDFLARE_ORIGIN_CA_KEY"
+        }
+      }
+    }
+  ],
+  "outbounds": [{"type": "direct", "tag": "direct"}]
+}

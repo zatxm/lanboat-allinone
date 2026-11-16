@@ -1,0 +1,18 @@
+{
+  "log": { "level": "info" },
+  "inbounds": [
+    { "type": "mixed", "tag": "local", "listen": "127.0.0.1", "listen_port": 1080 }
+  ],
+  "outbounds": [
+    { "type": "direct", "tag": "direct" },
+    { "type": "socks", "tag": "proxy", "server": "127.0.0.1", "server_port": 1081 }
+  ],
+  "route": {
+    "find_process": true,
+    "rules": [
+      { "process_name": ["curl", "wget"], "outbound": "proxy" },
+      { "process_path_regex": ["/firefox(-bin)?$"], "outbound": "proxy" }
+    ],
+    "final": "direct"
+  }
+}

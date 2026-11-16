@@ -1,0 +1,17 @@
+{
+  "log": {"level": "info"},
+  "inbounds": [{"type": "mixed", "tag": "local", "listen": "127.0.0.1", "listen_port": 2080}],
+  "outbounds": [{"type": "direct", "tag": "direct"}, {"type": "block", "tag": "deny"}],
+  "route": {
+    "rules": [
+      {"network_is_expensive": true, "outbound": "deny"},
+      {"network_type": ["wifi", "ethernet"], "outbound": "direct"}
+    ],
+    "final": "deny"
+  },
+  "dns": {
+    "servers": [{"type": "local", "tag": "system"}],
+    "rules": [{"network_type": ["wifi", "ethernet"], "server": "system"}],
+    "final": "system"
+  }
+}

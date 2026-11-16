@@ -1,0 +1,8 @@
+{
+  "inbounds": [{
+    "type":"shadowsocks","tag":"server","listen":"127.0.0.1","listen_port":24443,
+    "method":"aes-256-gcm","password":"replace-this-password",
+    "multiplex":{"enabled":true,"padding":true}
+  }],
+  "outbounds":[{"type":"direct","tag":"direct"}]
+}

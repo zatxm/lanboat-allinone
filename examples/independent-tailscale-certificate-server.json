@@ -1,0 +1,30 @@
+{
+  "endpoints": [
+    {
+      "type": "tailscale",
+      "tag": "tailnet",
+      "hostname": "lanboat-server",
+      "state_directory": "tailscale-state",
+      "on_demand": true
+    }
+  ],
+  "certificate_providers": [
+    {
+      "type": "tailscale",
+      "tag": "tailnet-cert",
+      "endpoint": "tailnet"
+    }
+  ],
+  "inbounds": [
+    {
+      "type": "trojan",
+      "tag": "server",
+      "listen": "127.0.0.1",
+      "listen_port": 8443,
+      "users": [{"password": "replace-with-a-private-password"}],
+      "tls": {"enabled": true, "certificate_provider": "tailnet-cert"}
+    }
+  ],
+  "outbounds": [{"type": "direct", "tag": "direct"}],
+  "route": {"final": "direct"}
+}

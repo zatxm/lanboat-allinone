@@ -1,0 +1,26 @@
+{
+  "inbounds": [{
+    "type": "tun",
+    "tag": "tun",
+    "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
+    "auto_route": true,
+    "auto_redirect": true,
+    "strict_route": true,
+    "auto_redirect_input_mark": "0x2023",
+    "auto_redirect_output_mark": "0x2024",
+    "auto_redirect_reset_mark": "0x2025",
+    "auto_redirect_tproxy_mark": "0x2026",
+    "auto_redirect_nfqueue": 100,
+    "auto_redirect_iproute2_fallback_rule_index": 32768,
+    "exclude_mptcp": false
+  }],
+  "outbounds": [{"type": "direct", "tag": "direct"}],
+  "dns": {
+    "servers": [{"type": "udp", "tag": "upstream", "server": "1.1.1.1"}],
+    "final": "upstream"
+  },
+  "route": {
+    "rules": [{"ip_cidr": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"], "action": "bypass"}],
+    "final": "direct"
+  }
+}

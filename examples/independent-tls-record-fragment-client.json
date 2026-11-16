@@ -1,0 +1,25 @@
+{
+  "outbounds": [
+    {
+      "type": "trojan",
+      "tag": "proxy",
+      "tls": {
+        "enabled": true,
+        "server_name": "localhost",
+        "certificate_path": "server-ca.crt",
+        "record_fragment": true
+      },
+      "server": "127.0.0.1",
+      "server_port": 8443,
+      "password": "replace-with-trojan-password"
+    }
+  ],
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ]
+}

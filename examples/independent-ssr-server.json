@@ -1,0 +1,5 @@
+{
+  "log": {"level": "info"},
+  "inbounds": [{"type": "shadowsocksr", "tag": "server", "listen": "127.0.0.1", "listen_port": 8388, "method": "aes-256-cfb", "password": "replace-with-your-password", "protocol": "auth_aes128_sha1", "obfs": "tls1.2_ticket_auth"}],
+  "outbounds": [{"type": "direct", "tag": "direct"}]
+}

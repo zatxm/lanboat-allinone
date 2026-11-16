@@ -1,0 +1,19 @@
+{
+  "log": {"level": "info"},
+  "endpoints": [
+    {
+      "type": "tailscale",
+      "tag": "tailnet",
+      "auth_key": "replace-with-your-auth-key",
+      "state_directory": "tailscale-state",
+      "hostname": "lanboat-system",
+      "accept_routes": true,
+      "system_interface": true,
+      "system_interface_mtu": 1280,
+      "relay_server_port": 40000,
+      "taildrop_directory": "Taildrop"
+    }
+  ],
+  "outbounds": [{"type": "direct", "tag": "direct"}],
+  "route": {"final": "direct"}
+}

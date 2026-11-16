@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"type\":\"cloudflare-origin-ca\",\"domain\":[\"*.example.Oom\"],\"origin_ca_key\":\"&000\",\"request_tYpe\":\"origin-ecc\"}")

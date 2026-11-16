@@ -1,0 +1,42 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [
+    {
+      "type": "openconnect",
+      "tag": "vpn",
+      "listen": "::",
+      "listen_port": 48443,
+      "group": "all",
+      "address": [
+        "10.44.0.2/32",
+        "fd44::2/128"
+      ],
+      "mtu": 1280,
+      "users": [
+        {
+          "username": "example-user",
+          "password": "replace-this-example-password"
+        }
+      ],
+      "tls": {
+        "enabled": true,
+        "certificate_path": "server.crt",
+        "key_path": "server.key"
+      },
+      "dtls_cipher_suites": [
+        "PSK-AES128-CBC-SHA256"
+      ]
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "final": "direct"
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "inbounds": [
+    {
+      "type": "masque",
+      "tag": "server",
+      "listen": "127.0.0.1",
+      "listen_port": 8448,
+      "users": [
+        {
+          "username": "client",
+          "password": "replace-with-long-random-password"
+        }
+      ],
+      "address": [
+        "10.44.0.2/32",
+        "fd44::2/128"
+      ],
+      "tls": {
+        "enabled": true,
+        "certificate_path": "server.crt",
+        "key_path": "server.key"
+      },
+      "masque_dns": [
+        {
+          "nameservers": [
+            {
+              "priority": 1,
+              "ipv4_addresses": [
+                "127.0.0.1"
+              ],
+              "parameters": {
+                "3": "FOk="
+              }
+            }
+          ],
+          "internal_domains": [
+            ""
+          ],
+          "search_domains": [
+            "corp.example"
+          ]
+        }
+      ],
+      "masque_pref64": []
+    },
+    {
+      "type": "dns",
+      "tag": "private-dns",
+      "listen": "127.0.0.1",
+      "listen_port": 5353
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "dns": {
+    "servers": [
+      {
+        "type": "local",
+        "tag": "system"
+      }
+    ],
+    "final": "system"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "log": {"level": "info"},
+  "inbounds": [{"type": "mixed", "tag": "local", "listen": "127.0.0.1", "listen_port": 2080}],
+  "outbounds": [{"type": "shadowsocksr", "tag": "proxy", "server": "203.0.113.10", "server_port": 8388, "method": "aes-256-cfb", "password": "replace-with-your-password", "protocol": "auth_aes128_sha1", "obfs": "tls1.2_ticket_auth", "obfs_param": "example.com"}],
+  "route": {"final": "proxy"}
+}

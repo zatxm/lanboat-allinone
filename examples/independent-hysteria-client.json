@@ -1,0 +1,32 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "hysteria",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 8443,
+      "tls": {
+        "enabled": true,
+        "server_name": "localhost",
+        "certificate_path": "server.crt"
+      },
+      "up_mbps": 100,
+      "down_mbps": 100,
+      "auth_str": "change-this-password"
+    }
+  ],
+  "route": {
+    "final": "proxy"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "endpoints": [
+    {
+      "type": "masque-client",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 8448,
+      "username": "client",
+      "password": "replace-with-long-random-password",
+      "tls": {
+        "enabled": true,
+        "server_name": "localhost",
+        "certificate_path": "server-ca.crt"
+      },
+      "version": 3,
+      "path": "/vpn/{target}/{ipproto}/",
+      "disable_version_fallback": false,
+      "idle_timeout": "1m",
+      "keep_alive_period": "15s",
+      "stream_receive_window": "256KB",
+      "connection_receive_window": "4MB",
+      "max_concurrent_streams": 32
+    }
+  ],
+  "route": {
+    "final": "proxy"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "inbounds": [{
+    "type": "hysteria2", "tag": "server", "listen": "127.0.0.1", "listen_port": 8443,
+    "users": [{"password": "replace-with-shared-password"}],
+    "obfs": {"type": "gecko", "password": "replace-with-obfuscation-password", "min_packet_size": 512, "max_packet_size": 1200},
+    "tls": {"enabled": true, "certificate_path": "server.crt", "key_path": "server.key"}
+  }],
+  "outbounds": [{"type": "direct", "tag": "direct"}],
+  "route": {"final": "direct"}
+}

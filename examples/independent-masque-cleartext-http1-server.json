@@ -1,0 +1,26 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "endpoints": [
+    {
+      "type": "masque-server",
+      "tag": "vpn",
+      "listen": "127.0.0.1",
+      "listen_port": 8443,
+      "version": [
+        1
+      ],
+      "address": [
+        "10.44.0.1/24",
+        "fd44::1/64"
+      ],
+      "users": [
+        {
+          "username": "client",
+          "password": "replace-with-password"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "inbounds": [
+    {
+      "type": "shadowsocks",
+      "tag": "server",
+      "listen": "127.0.0.1",
+      "listen_port": 8443,
+      "method": "aes-256-gcm",
+      "password": "replace-inner-password",
+      "plugin": "shadow-tls",
+      "plugin_opts": "version=3;password=replace-outer-password;handshake=127.0.0.1:9443;strict-mode=true"
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "outbounds": [
+    {
+      "type": "relay",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 8444,
+      "username": "client",
+      "password": "replace-with-random-relay-password",
+      "tls": {
+        "enabled": true,
+        "server_name": "localhost",
+        "certificate_path": "server-ca.crt"
+      }
+    }
+  ]
+}

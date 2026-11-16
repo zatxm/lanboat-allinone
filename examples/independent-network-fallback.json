@@ -1,0 +1,11 @@
+{
+  "inbounds": [{ "type": "mixed", "tag": "local", "listen": "127.0.0.1", "listen_port": 1080 }],
+  "outbounds": [{
+    "type": "direct", "tag": "direct",
+    "network_strategy": "fallback",
+    "network_type": ["ethernet", "wifi"],
+    "fallback_network_type": ["cellular", "other"],
+    "fallback_delay": "300ms"
+  }],
+  "route": { "auto_detect_interface": true, "final": "direct" }
+}

@@ -1,0 +1,21 @@
+{
+  "log": {"level": "warn"},
+  "inbounds": [
+    {"type": "dns", "tag": "dns-in", "listen": "127.0.0.1", "listen_port": 1053}
+  ],
+  "outbounds": [{"type": "direct", "tag": "direct"}],
+  "dns": {
+    "servers": [
+      {"type": "mdns", "tag": "lan"},
+      {"type": "local", "tag": "system"}
+    ],
+    "rules": [
+      {
+        "domain_suffix": ["local", "254.169.in-addr.arpa", "8.e.f.ip6.arpa", "9.e.f.ip6.arpa", "a.e.f.ip6.arpa", "b.e.f.ip6.arpa"],
+        "server": "lan"
+      }
+    ],
+    "final": "system"
+  },
+  "route": {"default_domain_resolver": "system", "rules": [{"inbound": ["dns-in"], "action": "hijack-dns"}]}
+}

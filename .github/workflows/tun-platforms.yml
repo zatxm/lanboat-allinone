@@ -1,0 +1,47 @@
+name: TUN platform tests
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tun:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y nftables
+      - name: Compile tests
+        shell: bash
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p .cache/tun-platform
+          go test -c -o .cache/tun-platform/native.test${{ runner.os == 'Windows' && '.exe' || '' }} ./native
+      - name: Obtain verified Windows driver for testing
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $path = '.cache/tun-platform/wintun.zip'
+          Invoke-WebRequest https://www.wintun.net/builds/wintun-0.14.1.zip -OutFile $path
+          $expected = '07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51'
+          if ((Get-FileHash $path -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw 'Wintun archive checksum mismatch' }
+          Expand-Archive $path .cache/tun-platform/driver
+          Copy-Item .cache/tun-platform/driver/wintun/bin/amd64/wintun.dll .cache/tun-platform/wintun.dll
+      - name: Windows device, DNS and WFP tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & .cache/tun-platform/native.test.exe '-test.run=^(TestTUN|TestUTUN)' -test.v -test.timeout=90s
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Unix device tests in disposable runner
+        if: runner.os != 'Windows'
+        shell: bash
+        run: sudo .cache/tun-platform/native.test '-test.run=^(TestNativeTUNNamespace|TestTUN|TestUTUN)' -test.v -test.timeout=90s

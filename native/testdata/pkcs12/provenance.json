@@ -1,0 +1,38 @@
+{
+  "generator": "OpenSSL 4.0.3 29 Sep 2026 (Library: OpenSSL 4.0.3 29 Sep 2026)",
+  "purpose": "Public self-signed test identity; not a deployment credential. Tests do not require PBMAC1 support in the installed OpenSSL.",
+  "files": [
+    {
+      "file": "pbmac1-sha256.p12",
+      "password": "private",
+      "args": [],
+      "sha256": "c3710b956721a9f72462e50e5ca0116e6e8193bf384716250439bf3f6dd82c03"
+    },
+    {
+      "file": "pbmac1-sha512.p12",
+      "password": "private",
+      "args": [
+        "-macalg",
+        "sha512",
+        "-pbmac1_pbkdf2_md",
+        "sha512"
+      ],
+      "sha256": "194a479b2f0a9aa47b9bd6e76e55bfda78fc46d082827aa50e80598448f65dab"
+    },
+    {
+      "file": "pbmac1-mixed.p12",
+      "password": "private",
+      "args": [
+        "-pbmac1_pbkdf2_md",
+        "sha512"
+      ],
+      "sha256": "1ea329e52019da28f34f18c0209a8b3a92c1f669e1378d4f9188428e8d4640c8"
+    },
+    {
+      "file": "pbmac1-unicode.p12",
+      "password": "岚舟🔑",
+      "args": [],
+      "sha256": "ecb1f2e8bfb64222648458c055d5513f2887eef0a41a5d8bfa56a467ba0e2f93"
+    }
+  ]
+}

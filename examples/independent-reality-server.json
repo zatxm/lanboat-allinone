@@ -1,0 +1,45 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [
+    {
+      "type": "vless",
+      "tag": "vision",
+      "listen": "127.0.0.1",
+      "listen_port": 8443,
+      "users": [
+        {
+          "name": "client",
+          "uuid": "2b2d59c9-a4e1-4efa-a694-12b6f063093c",
+          "flow": "xtls-rprx-vision"
+        }
+      ],
+      "tls": {
+        "enabled": true,
+        "server_name": "www.example.com",
+        "reality": {
+          "enabled": true,
+          "private_key": "BySjm2FGfDdgKoupb66HbZMtHtsX98riZMpFmUf2r0o",
+          "short_id": [
+            "0123456789abcdef"
+          ],
+          "max_time_difference": "1m",
+          "handshake": {
+            "server": "www.example.com",
+            "server_port": 443
+          }
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "final": "direct"
+  }
+}

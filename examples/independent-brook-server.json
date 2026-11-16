@@ -1,0 +1,8 @@
+{
+  "log": {"level": "info"},
+  "inbounds": [{
+    "type": "brook", "tag": "brook", "listen": "127.0.0.1", "listen_port": 9999,
+    "password": "replace-this-demo-password"
+  }],
+  "outbounds": [{"type": "direct", "tag": "direct"}]
+}

@@ -1,0 +1,29 @@
+{
+  "inbounds": [
+    {
+      "type": "socks",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "shadowsocks",
+      "tag": "proxy",
+      "method": "aes-256-gcm",
+      "password": "replace-with-ss-password",
+      "plugin": "cloak",
+      "plugin_opts": "UID=BwcHBwcHBwcHBwcHBwcHBw==;ProxyMethod=shadowsocks;Transport=cdn;EncryptionMethod=chacha20-poly1305;ServerName=cdn.example.com;NumConn=4;StreamTimeout=300;PublicKey=E75P6uryBMf9M1j8nAByGIHRdCeBKCJ+xnTzf3/pe20=;CDNOriginHost=origin.example.com",
+      "server": "cdn.example.com",
+      "server_port": 4000,
+      "tls": {
+        "enabled": true,
+        "server_name": "cdn.example.com"
+      }
+    }
+  ],
+  "route": {
+    "final": "proxy"
+  }
+}

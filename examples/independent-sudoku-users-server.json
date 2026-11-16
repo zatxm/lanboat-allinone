@@ -1,0 +1,24 @@
+{
+  "log": {"level": "info"},
+  "external_controller": "127.0.0.1:9090",
+  "secret": "replace-this-controller-secret",
+  "inbounds": [{
+    "type": "sudoku", "tag": "sudoku-server",
+    "listen": "127.0.0.1", "listen_port": 10801,
+    "sudoku": {
+      "key": "6e5c05c3f7f5d45fcd2f6a5a7f4700f94ff51db376c128c581849feb71ccc58b",
+      "aead": "chacha20-poly1305",
+      "ascii": "up_ascii_down_entropy",
+      "padding_min": 5, "padding_max": 15,
+      "httpmask": {"mode": "auto", "path_root": "assets"},
+      "usage_path": "data/sudoku-users.usage.json",
+      "users": [{
+        "alias": "alice",
+        "key": "b1ec294d5dba60a800e1ef8c3423d5a176093f0d8c432e01bc24895d6828140aac81776fc0b44c3c08e418eb702b5e0a4c0a2dd458f8284d67f0d8d2d4bfdd0e",
+        "bandwidth": [20, 5], "data": 100
+      }]
+    }
+  }],
+  "outbounds": [{"type": "direct", "tag": "direct"}],
+  "route": {"final": "direct"}
+}

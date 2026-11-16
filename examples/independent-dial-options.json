@@ -1,0 +1,29 @@
+{
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct",
+      "inet4_bind_address": "0.0.0.0",
+      "inet6_bind_address": "::",
+      "connect_timeout": "15s",
+      "tcp_keep_alive": "5m",
+      "tcp_keep_alive_interval": "75s",
+      "reuse_addr": true,
+      "udp_fragment": false
+    }
+  ],
+  "dns": {
+    "servers": [
+      {
+        "type": "udp",
+        "tag": "resolver",
+        "server": "1.1.1.1",
+        "inet4_bind_address": "0.0.0.0",
+        "connect_timeout": "5s"
+      }
+    ]
+  },
+  "route": {
+    "final": "direct"
+  }
+}

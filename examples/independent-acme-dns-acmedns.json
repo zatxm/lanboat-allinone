@@ -1,0 +1,5 @@
+{
+  "certificate_providers": [{"type": "acme", "tag": "public-cert", "domain": ["*.example.org"], "email": "admin@example.org", "dns01_challenge": {"provider": "acmedns", "username": "REPLACE_WITH_API_USER", "password": "REPLACE_WITH_API_KEY", "subdomain": "REPLACE_WITH_REGISTERED_SUBDOMAIN", "server_url": "https://auth.acme-dns.io", "override_domain": "registered.auth.acme-dns.io", "propagation_timeout": "2m", "resolvers": ["1.1.1.1"]}}],
+  "inbounds": [{"type": "trojan", "tag": "server", "listen": "0.0.0.0", "listen_port": 443, "users": [{"password": "REPLACE_WITH_PROXY_PASSWORD"}], "tls": {"enabled": true, "certificate_provider": "public-cert"}}],
+  "outbounds": [{"type": "direct", "tag": "direct"}]
+}

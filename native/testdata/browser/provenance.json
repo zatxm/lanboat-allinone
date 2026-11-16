@@ -1,0 +1,7 @@
+{
+  "utls_revision": "a13c59ffe98bb01b2ca14143eb2e887664b1f138",
+  "utls_version": "v1.8.3-0.20261108164504-a13c59ffe98b",
+  "reference_binary_sha256": "6b3657b99b1b650a1459b50b91e404fb8222caa4ee39938439e074192e4cc8bd",
+  "curl_cffi_version": "0.13.0",
+  "scope": "Independent reference ClientHello traffic, not a claim of native browser or HTTP fingerprint equivalence."
+}

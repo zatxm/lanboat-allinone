@@ -1,0 +1,17 @@
+{
+  "log": {"level": "info"},
+  "experimental": {
+    "clash_api": {
+      "external_controller": "127.0.0.1:9090",
+      "secret": "change-me",
+      "default_mode": "rule"
+    }
+  },
+  "inbounds": [{"type": "mixed", "tag": "local", "listen": "127.0.0.1", "listen_port": 1080}],
+  "outbounds": [
+    {"type": "selector", "tag": "pick", "outbounds": ["node", "direct"], "default": "node"},
+    {"type": "sudoku", "tag": "node", "server": "127.0.0.1", "server_port": 8388, "sudoku": {"key": "replace-with-your-long-random-shared-key"}},
+    {"type": "direct", "tag": "direct"}
+  ],
+  "route": {"final": "pick"}
+}

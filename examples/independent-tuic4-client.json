@@ -1,0 +1,32 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "tuic",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 8444,
+      "tls": {
+        "enabled": true,
+        "server_name": "localhost",
+        "certificate_path": "server.crt"
+      },
+      "version": "4",
+      "token": "change-this-token",
+      "udp_relay_mode": "quic"
+    }
+  ],
+  "route": {
+    "final": "proxy"
+  }
+}

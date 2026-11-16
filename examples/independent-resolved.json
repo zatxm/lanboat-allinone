@@ -1,0 +1,12 @@
+{
+  "services": [
+    { "type": "resolved", "tag": "resolved", "listen": "127.0.0.53", "listen_port": 53 }
+  ],
+  "dns": {
+    "servers": [
+      { "type": "resolved", "tag": "network-dns", "service": "resolved", "accept_default_resolvers": true }
+    ],
+    "final": "network-dns"
+  },
+  "outbounds": [ { "type": "direct", "tag": "direct" } ]
+}

@@ -1,0 +1,11 @@
+{
+  "inbounds": [{"type": "mixed", "tag": "local", "listen": "127.0.0.1", "listen_port": 1080}],
+  "outbounds": [{"type": "direct", "tag": "browser"}, {"type": "direct", "tag": "default"}],
+  "route": {
+    "rules": [
+      {"action": "sniff", "sniffer": ["quic"]},
+      {"protocol": "quic", "client": ["chromium", "safari", "firefox"], "outbound": "browser"}
+    ],
+    "final": "default"
+  }
+}

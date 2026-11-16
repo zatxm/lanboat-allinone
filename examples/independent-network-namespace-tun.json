@@ -1,0 +1,13 @@
+{
+  "network_namespaces": [
+    { "type": "unshare", "tag": "isolated", "pid_file": "lanboat-netns.pid" }
+  ],
+  "inbounds": [
+    {
+      "type": "tun", "tag": "vpn", "interface_name": "lanboat0", "netns": "isolated",
+      "address": ["172.25.0.1/30", "fd25::1/126"], "auto_route": true, "auto_redirect": true
+    }
+  ],
+  "outbounds": [{ "type": "direct", "tag": "direct" }],
+  "route": { "final": "direct" }
+}

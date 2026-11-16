@@ -1,0 +1,10 @@
+{
+  "inbounds": [{"type":"mixed","tag":"local","listen":"127.0.0.1","listen_port":1080}],
+  "outbounds": [{
+    "type":"tuic","tag":"proxy","server":"127.0.0.1","server_port":18444,
+    "uuid":"2b2d59c9-a4e1-4efa-a694-12b6f063093c","password":"change-this-password",
+    "congestion_control":"bbr","udp_relay_mode":"quic",
+    "tls":{"enabled":true,"server_name":"localhost","certificate_path":"server-ca.crt"}
+  }],
+  "route":{"final":"proxy"}
+}

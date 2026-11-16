@@ -1,0 +1,23 @@
+{
+  "inbounds": [
+    { "type": "direct", "tag": "dns-in", "listen": "127.0.0.1", "listen_port": 1053 }
+  ],
+  "route": {
+    "rules": [{ "inbound": ["dns-in"], "action": "hijack-dns" }]
+  },
+  "dns": {
+    "rules": [
+      {
+        "domain": ["example.test"],
+        "query_type": ["CAA", "TXT", "TYPE65280"],
+        "action": "predefined",
+        "answer": [
+          "example.test. 1h IN CAA 0 issue \"letsencrypt.org\"",
+          "example.test. 60 IN TXT \"Lanboat DNS records\"",
+          "example.test. 60 IN TYPE65280 \\# 4 DEADBEEF"
+        ]
+      },
+      { "action": "reject" }
+    ]
+  }
+}

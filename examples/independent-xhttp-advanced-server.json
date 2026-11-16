@@ -1,0 +1,52 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [
+    {
+      "type": "vless",
+      "tag": "server",
+      "listen": "127.0.0.1",
+      "listen_port": 48443,
+      "users": [
+        {
+          "uuid": "2b2d59c9-a4e1-4efa-a694-12b6f063093c"
+        }
+      ],
+      "transport": {
+        "type": "xhttp",
+        "path": "/lanboat-xhttp",
+        "mode": "packet-up",
+        "x_padding_obfs_mode": true,
+        "x_padding_bytes": "100-1000",
+        "x_padding_key": "_dc",
+        "x_padding_header": "X-Cache",
+        "x_padding_placement": "queryInHeader",
+        "x_padding_method": "tokenish",
+        "session_placement": "header",
+        "session_key": "X-Session",
+        "seq_placement": "header",
+        "seq_key": "X-Seq",
+        "uplink_data_placement": "header",
+        "uplink_data_key": "X-Data",
+        "uplink_chunk_size": 4096,
+        "sc_max_each_post_bytes": 1000000,
+        "sc_min_posts_interval_ms": 30
+      },
+      "tls": {
+        "enabled": true,
+        "certificate_path": "server.crt",
+        "key_path": "server.key"
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "final": "direct"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 2080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 8443,
+      "uuid": "2b2d59c9-a4e1-4efa-a694-12b6f063093c",
+      "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true,
+        "server_name": "www.example.com",
+        "reality": {
+          "enabled": true,
+          "public_key": "VROshDUOjEenkkveTtmttxA2hJbMp7xbCb8EykOkRXc",
+          "short_id": "0123456789abcdef"
+        },
+        "utls": {
+          "enabled": true,
+          "fingerprint": "random"
+        }
+      }
+    }
+  ],
+  "route": {
+    "final": "proxy"
+  }
+}

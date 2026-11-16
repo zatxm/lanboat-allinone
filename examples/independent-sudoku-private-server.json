@@ -1,0 +1,33 @@
+{
+  "inbounds": [
+    {
+      "type": "sudoku",
+      "tag": "server",
+      "listen": "127.0.0.1",
+      "listen_port": 8443,
+      "sudoku": {
+        "aead": "chacha20-poly1305",
+        "enable_pure_downlink": false,
+        "httpmask": {
+          "mode": "auto",
+          "path_root": "assets"
+        },
+        "custom_tables": [
+          "xpxvvpvv",
+          "ppxvvxvv",
+          "vvpxxvvp"
+        ],
+        "key": "6e5c05c3f7f5d45fcd2f6a5a7f4700f94ff51db376c128c581849feb71ccc58b"
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "final": "direct"
+  }
+}

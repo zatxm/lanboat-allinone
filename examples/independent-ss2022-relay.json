@@ -1,0 +1,30 @@
+{
+  "inbounds": [
+    {
+      "type": "shadowsocks",
+      "tag": "ss-relay",
+      "listen": "127.0.0.1",
+      "listen_port": 8388,
+      "method": "2022-blake3-aes-128-gcm",
+      "password": "AAECAwQFBgcICQoLDA0ODw==",
+      "udp_timeout": "5m",
+      "destinations": [
+        {
+          "name": "edge-a",
+          "server": "127.0.0.1",
+          "server_port": 8389,
+          "password": "EBESExQVFhcYGRobHB0eHw=="
+        }
+      ]
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "final": "direct"
+  }
+}

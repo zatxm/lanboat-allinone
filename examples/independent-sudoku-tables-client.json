@@ -1,0 +1,39 @@
+{
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "sudoku",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 8443,
+      "multiplex": {
+        "enabled": true
+      },
+      "sudoku": {
+        "key": "replace-with-a-random-shared-secret",
+        "aead": "chacha20-poly1305",
+        "enable_pure_downlink": false,
+        "httpmask": {
+          "mode": "auto",
+          "host": "cover.example",
+          "path_root": "assets"
+        },
+        "custom_tables": [
+          "xpxvvpvv",
+          "ppxvvxvv",
+          "vvpxxvvp"
+        ]
+      }
+    }
+  ],
+  "route": {
+    "final": "proxy"
+  }
+}

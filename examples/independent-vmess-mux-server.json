@@ -1,0 +1,24 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [
+    {
+      "type": "vmess",
+      "tag": "server",
+      "listen": "127.0.0.1",
+      "listen_port": 8388,
+      "users": [
+        {
+          "uuid": "2b2d59c9-a4e1-4efa-a694-12b6f063093c"
+        }
+      ]
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}

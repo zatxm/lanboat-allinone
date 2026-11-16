@@ -1,0 +1,65 @@
+[
+  {
+    "profile": "chrome140",
+    "binary_sha256": "10b4c0c8825f5aea004b638a92ca9fa07d69e6eae2e35b43e8777c6ff72eaa22",
+    "source": "native browser isolated headless profile over loopback HTTP proxy",
+    "fixture_sha256": "a0e66fbe6df915eaf12c8e52feb77a472cf96561b6ac77c1a0daa9398333d21a",
+    "download_url": "https://storage.googleapis.com/chrome-for-testing-public/140.0.7339.207/linux64/chrome-linux64.zip"
+  },
+  {
+    "profile": "chrome110",
+    "fixture_sha256": "6c96467c79e53c7d526b66ff95b7111637b0e0ff5d9c4d1f3440a2d05bdfdd84",
+    "source": "curl_cffi0.13.0 loopback ClientHello reference",
+    "native_browser": false,
+    "reference_url": "https://github.com/lexiforest/curl_cffi/tree/v0.13.0"
+  },
+  {
+    "profile": "firefox148",
+    "binary_sha256": "fb88011cd6432efcc64e29d68b64c05edb8a7db6f7f312b7de93a7deea310ba3",
+    "source": "native browser isolated headless profile over loopback HTTP proxy",
+    "fixture_sha256": "966724acb6792e33d5c1dc84e396d3b08959e6d65e4722b547b8f1c3ceafd6c7",
+    "download_url": "https://archive.mozilla.org/pub/firefox/releases/148.0/linux-x86_64/en-US/firefox-148.0.tar.xz"
+  },
+  {
+    "profile": "chrome100",
+    "fixture_sha256": "c5eea095ab7d2c56b51d5894e056e7f230907d6007f8b8219d4f1233a2639d33",
+    "source": "curl_cffi0.13.0 loopback ClientHello reference",
+    "native_browser": false,
+    "reference_url": "https://github.com/lexiforest/curl_cffi/tree/v0.13.0"
+  },
+  {
+    "profile": "firefox109",
+    "binary_sha256": "06ad5232ea35abd13ad6341782969ef17d79341032bdf6fece69df1b1998f9e2",
+    "source": "native browser isolated headless profile over loopback HTTP proxy",
+    "fixture_sha256": "0214d732077144bb32a8b97678cd52ab19039ab5614fef09c50b7d5ad50802df",
+    "download_url": "https://archive.mozilla.org/pub/firefox/releases/109.0/linux-x86_64/en-US/firefox-109.0.tar.bz2"
+  },
+  {
+    "profile": "firefox120",
+    "binary_sha256": "74b442bb10d62f01e80eeae8fee96fd98ecb1d414cf283b2fcef80410d827750",
+    "source": "native browser isolated headless profile over loopback HTTP proxy",
+    "fixture_sha256": "1a089e52c3ae3a640416e4086144d8960cc6644e1bc5692c6837348c09f0c1d0",
+    "download_url": "https://archive.mozilla.org/pub/firefox/releases/120.0/linux-x86_64/en-US/firefox-120.0.tar.bz2"
+  },
+  {
+    "profile": "chrome120",
+    "fixture_sha256": "2d33ec567e4035137a981c1af8313dd0cdb63fda0c2cb3cd58c5cd93d0d37fb6",
+    "source": "curl_cffi0.13.0 loopback ClientHello reference",
+    "native_browser": false,
+    "reference_url": "https://github.com/lexiforest/curl_cffi/tree/v0.13.0"
+  },
+  {
+    "profile": "firefox117",
+    "binary_sha256": "3a9707e15ba1010359a41bab4d895be15f000dae6d014b4f02f011c9b4ad1060",
+    "source": "native browser isolated headless profile over loopback HTTP proxy",
+    "fixture_sha256": "fc865797f4224763eb07ba0834261cdeb0b33aceab872546a969016b955c7fbc",
+    "download_url": "https://archive.mozilla.org/pub/firefox/releases/117.0/linux-x86_64/en-US/firefox-117.0.tar.bz2"
+  },
+  {
+    "profile": "chrome150",
+    "binary_sha256": "2a71c17fb1e713cf02486e28fad8f8da89dcffb7d49ff234e21dee35e9f986e1",
+    "source": "native browser isolated headless profile over loopback HTTP proxy",
+    "fixture_sha256": "80d6da994a7c6ae11ef5edb13a8a68bb1d3cee289880103be3875bea62fa709d",
+    "download_url": "https://storage.googleapis.com/chrome-for-testing-public/150.0.7871.124/linux64/chrome-linux64.zip"
+  }
+]

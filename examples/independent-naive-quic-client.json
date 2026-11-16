@@ -1,0 +1,28 @@
+{
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "naive",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 2443,
+      "username": "client",
+      "password": "replace-with-a-strong-password",
+      "quic": true,
+      "udp_over_tcp": true,
+      "tls": {
+        "enabled": true,
+        "server_name": "localhost",
+        "certificate_path": "server-ca.crt"
+      },
+      "quic_congestion_control": "cubic"
+    }
+  ]
+}

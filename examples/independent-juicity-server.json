@@ -1,0 +1,5 @@
+{
+  "inbounds": [{"type": "juicity", "tag": "server", "listen": "127.0.0.1", "listen_port": 8443, "users": [{"uuid": "2b2d59c9-a4e1-4efa-a694-12b6f063093c", "password": "replace-with-your-password"}], "tls": {"enabled": true, "certificate_path": "server.crt", "key_path": "server.key"}}],
+  "outbounds": [{"type": "direct", "tag": "direct"}],
+  "route": {"final": "direct"}
+}

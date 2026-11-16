@@ -1,0 +1,8 @@
+{
+  "inbounds": [{"type":"mixed","tag":"local","listen":"127.0.0.1","listen_port":1080}],
+  "outbounds": [{
+    "type":"sudoku","tag":"proxy","server":"127.0.0.1","server_port":8443,
+    "sudoku":{"key":"replace-with-a-random-shared-secret","aead":"chacha20-poly1305","padding_min":5,"padding_max":15,"enable_pure_downlink":true}
+  }],
+  "route":{"final":"proxy"}
+}

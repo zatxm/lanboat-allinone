@@ -1,0 +1,24 @@
+{
+  "log": {"level": "info"},
+  "inbounds": [
+    {"type": "mixed", "tag": "local", "listen": "127.0.0.1", "listen_port": 1080}
+  ],
+  "endpoints": [
+    {
+      "type": "openconnect",
+      "tag": "proxy",
+      "server": "https://127.0.0.1:48443/",
+      "flavor": "anyconnect",
+      "username": "example-user",
+      "password": "replace-this-example-password",
+      "auth_group": "all",
+      "on_demand": true,
+      "mtu": 1280,
+      "tls": {
+        "server_name": "localhost",
+        "certificate_authority_path": "server-ca.crt"
+      }
+    }
+  ],
+  "route": {"final": "proxy"}
+}

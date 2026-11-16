@@ -1,0 +1,5 @@
+{
+  "certificate_providers": [{"type": "acme", "tag": "public-cert", "domain": ["proxy.example.org"], "email": "admin@example.org", "provider": "letsencrypt", "key_type": "p256"}],
+  "inbounds": [{"type": "trojan", "tag": "server", "listen": "0.0.0.0", "listen_port": 8443, "users": [{"password": "REPLACE_WITH_PROXY_PASSWORD"}], "tls": {"enabled": true, "certificate_provider": "public-cert"}}],
+  "outbounds": [{"type": "direct", "tag": "direct"}]
+}

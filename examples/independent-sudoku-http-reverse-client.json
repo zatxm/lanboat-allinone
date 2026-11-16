@@ -1,0 +1,47 @@
+{
+  "inbounds": [],
+  "outbounds": [
+    {
+      "type": "sudoku",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 8443,
+      "multiplex": {
+        "enabled": true
+      },
+      "sudoku": {
+        "aead": "chacha20-poly1305",
+        "enable_pure_downlink": false,
+        "httpmask": {
+          "mode": "auto",
+          "host": "cover.example",
+          "path_root": "assets"
+        },
+        "custom_tables": [
+          "xpxvvpvv",
+          "ppxvvxvv",
+          "vvpxxvvp"
+        ],
+        "private_key": "b1ec294d5dba60a800e1ef8c3423d5a176093f0d8c432e01bc24895d6828140aac81776fc0b44c3c08e418eb702b5e0a4c0a2dd458f8284d67f0d8d2d4bfdd0e",
+        "reverse": {
+          "client_id": "local-web",
+          "routes": [
+            {
+              "path": "/app",
+              "target": "127.0.0.1:3000"
+            },
+            {
+              "path": "/api",
+              "target": "127.0.0.1:8080",
+              "strip_prefix": false,
+              "host_header": "api.internal"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "route": {
+    "final": "proxy"
+  }
+}

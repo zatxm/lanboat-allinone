@@ -1,0 +1,38 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 48443,
+      "uuid": "2b2d59c9-a4e1-4efa-a694-12b6f063093c",
+      "transport": {
+        "type": "xhttp",
+        "path": "/lanboat-xhttp",
+        "mode": "packet-up"
+      },
+      "tls": {
+        "enabled": true,
+        "server_name": "localhost",
+        "certificate_path": "server-ca.crt",
+        "alpn": [
+          "h3"
+        ]
+      }
+    }
+  ],
+  "route": {
+    "final": "proxy"
+  }
+}

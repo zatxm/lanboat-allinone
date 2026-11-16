@@ -1,0 +1,5 @@
+{
+  "inbounds": [{"type": "dns", "tag": "local-dns", "listen": "127.0.0.1", "listen_port": 5353}],
+  "outbounds": [{"type": "direct", "tag": "direct"}],
+  "dns": {"servers": [{"type": "quic", "tag": "secure", "server": "127.0.0.1", "server_port": 8853, "tls": {"server_name": "localhost", "certificate_path": "server.crt"}}], "final": "secure"}
+}

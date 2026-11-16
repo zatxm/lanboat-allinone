@@ -1,0 +1,30 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080,
+      "reuse_addr": true,
+      "tcp_fast_open": true,
+      "tcp_multi_path": false,
+      "disable_tcp_keep_alive": false,
+      "tcp_keep_alive": "5m",
+      "tcp_keep_alive_interval": "75s",
+      "udp_fragment": true,
+      "udp_timeout": "30s"
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "final": "direct"
+  }
+}

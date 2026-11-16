@@ -1,0 +1,5 @@
+{
+  "inbounds": [{"type": "mixed", "tag": "local", "listen": "127.0.0.1", "listen_port": 1080}],
+  "outbounds": [{"type": "juicity", "tag": "proxy", "server": "127.0.0.1", "server_port": 8443, "uuid": "2b2d59c9-a4e1-4efa-a694-12b6f063093c", "password": "replace-with-your-password", "tls": {"enabled": true, "server_name": "localhost", "certificate_path": "server.crt"}}],
+  "route": {"final": "proxy"}
+}

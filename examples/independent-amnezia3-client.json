@@ -1,0 +1,54 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "wireguard",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 51820,
+      "private_key": "CrZ9xNq/fuXf4v1Xn7o/Z1QDJQUMWrAZXq0f5ZrbHWQ=",
+      "peer_public_key": "C+j6sIsFUoipBstCdiC3Td3Tx8XcOzqtD1yiT6RHQjM=",
+      "local_address": [
+        "10.50.0.2/32"
+      ],
+      "amnezia": {
+        "jc": 3,
+        "jmin": 16,
+        "jmax": 48,
+        "s1": 31,
+        "s2": 17,
+        "s3": 19,
+        "s4": 23,
+        "h1": "1010-1020",
+        "h2": "2030-2040",
+        "h3": "3050-3060",
+        "h4": "4070-4080",
+        "i1": "<b 0xff010203><rc 8><t><r 7>",
+        "i3": "<b 0xab010203>",
+        "header_protection_key": "R0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0c=",
+        "content_padding_addition": "32-96",
+        "rekey_after_time": "90-120",
+        "rekey_timeout": "3-5",
+        "reject_after_time": "180-240",
+        "keepalive_timeout": "10-15",
+        "max_handshake_attempts": "5-8",
+        "persistent_keepalive_interval": "20-30",
+        "random_trailers": true,
+        "disable_cookies": false
+      }
+    }
+  ],
+  "route": {
+    "final": "proxy"
+  }
+}

@@ -1,0 +1,30 @@
+[
+  {
+    "password": "70617373776f7264",
+    "salt": "73616c74",
+    "rounds": 4,
+    "size": 32,
+    "key": "5bbf0cc293587f1c3635555c27796598d47e579071bf427e9d8fbe842aba34d9"
+  },
+  {
+    "password": "7061737300776f7264",
+    "salt": "73616c740064617461",
+    "rounds": 8,
+    "size": 48,
+    "key": "3ae743eb5ee91c5180580adc5bcab0b3f312debb49000c395d2b46fd7100ed41b83b485fbee8454904f065048d92607f"
+  },
+  {
+    "password": "616263",
+    "salt": "78797a",
+    "rounds": 1,
+    "size": 16,
+    "key": "c2bb76d2b6bc7f2e150b267152bf4cbc"
+  },
+  {
+    "password": "6c6f6e672d6b6579",
+    "salt": "000102030405060708090a0b0c0d0e0f",
+    "rounds": 16,
+    "size": 80,
+    "key": "4d03e770f5ea3256c864bf1f7893f7cb0e3be075f43e4ecda4bcd517a3c8e5ab929cc09602921a93a648ecd7a0e8d5a59a561773ca885cc41fda9f351319fba7595103868539f93198503a90d42c1c87"
+  }
+]

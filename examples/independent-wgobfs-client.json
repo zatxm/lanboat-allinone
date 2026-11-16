@@ -1,0 +1,32 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "wireguard",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 51820,
+      "private_key": "CrZ9xNq/fuXf4v1Xn7o/Z1QDJQUMWrAZXq0f5ZrbHWQ=",
+      "peer_public_key": "C+j6sIsFUoipBstCdiC3Td3Tx8XcOzqtD1yiT6RHQjM=",
+      "local_address": [
+        "10.50.0.2/32"
+      ],
+      "wgobfs": {
+        "password": "replace-with-shared-obfuscation-password"
+      }
+    }
+  ],
+  "route": {
+    "final": "proxy"
+  }
+}

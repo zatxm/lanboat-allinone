@@ -1,0 +1,15 @@
+{
+  "log": {"level": "info"},
+  "inbounds": [
+    {
+      "type": "direct",
+      "tag": "forward-in",
+      "listen": "127.0.0.1",
+      "listen_port": 8053,
+      "override_address": "1.1.1.1",
+      "override_port": 53,
+      "udp_timeout": "30s"
+    }
+  ],
+  "outbounds": [{"type": "direct", "tag": "direct"}]
+}

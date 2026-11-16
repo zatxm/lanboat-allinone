@@ -1,0 +1,16 @@
+{
+  "inbounds": [
+    {"type": "mixed", "tag": "local", "listen": "127.0.0.1", "listen_port": 1080}
+  ],
+  "outbounds": [
+    {"type": "direct", "tag": "direct"},
+    {"type": "socks", "tag": "ssh-proxy", "server": "127.0.0.1", "server_port": 2080}
+  ],
+  "route": {
+    "rules": [
+      {"action": "sniff", "sniffer": ["ssh"]},
+      {"protocol": "ssh", "client": ["OpenSSH_10.0p2", "OpenSSH_10.0p2 Debian-7 comment"], "outbound": "ssh-proxy"}
+    ],
+    "final": "direct"
+  }
+}

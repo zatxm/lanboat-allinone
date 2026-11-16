@@ -1,0 +1,34 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [
+    {
+      "type": "hysteria",
+      "tag": "server",
+      "listen": "127.0.0.1",
+      "listen_port": 8443,
+      "tls": {
+        "enabled": true,
+        "certificate_path": "server.crt",
+        "key_path": "server.key"
+      },
+      "up_mbps": 100,
+      "down_mbps": 100,
+      "users": [
+        {
+          "name": "client",
+          "auth_str": "change-this-password"
+        }
+      ],
+      "protocol": "wechat-video",
+      "obfs": "replace-with-obfuscation-password"
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}

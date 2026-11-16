@@ -1,0 +1,9 @@
+{
+  "reference": "https://github.com/klzgrad/naiveproxy/tree/v154.0.8037.49-5",
+  "reference_binary_sha256": "f86c52be454eebc9134aad476f3fe91fcf90df7200c3df262a4d0a3d2de85464",
+  "scope": "Plaintext HTTP2/HTTP3 frames from an isolated TLS/QUIC server with local temporary CA; dummy client/private credentials",
+  "captures": {
+    "h2-154.json": "4e8f8dae265e836ba18961756c1ab4c68161e3b7721fa43f30672532f50b0e45",
+    "h3-154.json": "310f3bbf5d0c0e07900b533a02bf5430be9cc9f066a5cc959a5835ce019f0061"
+  }
+}

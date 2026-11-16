@@ -1,0 +1,9 @@
+{
+  "inbounds": [{
+    "type":"sudoku","tag":"server","listen":"127.0.0.1","listen_port":8443,
+    "sudoku":{"key":"replace-with-a-random-shared-secret","aead":"chacha20-poly1305","enable_pure_downlink":false,
+      "httpmask":{"mode":"auto","path_root":"assets"}}
+  }],
+  "outbounds":[{"type":"direct","tag":"direct"}],
+  "route":{"final":"direct"}
+}

@@ -1,0 +1,21 @@
+{
+  "inbounds": [
+    {
+      "type": "shadowsocks",
+      "tag": "ss-terminal",
+      "listen": "127.0.0.1",
+      "listen_port": 8389,
+      "method": "2022-blake3-aes-128-gcm",
+      "password": "EBESExQVFhcYGRobHB0eHw=="
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "final": "direct"
+  }
+}

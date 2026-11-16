@@ -1,0 +1,9 @@
+{
+  "log": {"level": "info"},
+  "inbounds": [{"type": "mixed", "tag": "local", "listen": "127.0.0.1", "listen_port": 1080}],
+  "outbounds": [{
+    "type": "brook", "tag": "proxy", "server": "127.0.0.1", "server_port": 9999,
+    "password": "replace-this-demo-password"
+  }],
+  "route": {"final": "proxy"}
+}

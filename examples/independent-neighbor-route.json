@@ -1,0 +1,32 @@
+{
+  "log": {"level": "info"},
+  "inbounds": [
+    {"type": "mixed", "tag": "lan-proxy", "listen": "127.0.0.1", "listen_port": 1080}
+  ],
+  "outbounds": [
+    {"type": "direct", "tag": "direct"},
+    {"type": "block", "tag": "deny"}
+  ],
+  "route": {
+    "find_neighbor": true,
+    "dhcp_lease_files": ["/var/lib/misc/dnsmasq.leases"],
+    "rules": [
+      {
+        "source_mac_address": ["02:11:22:33:44:55"],
+        "source_hostname": ["nas"],
+        "outbound": "direct"
+      }
+    ],
+    "final": "deny"
+  },
+  "dns": {
+    "servers": [
+      {"type": "local", "tag": "system", "neighbor_domain": [".", ".lan"]},
+      {"type": "hosts", "tag": "device-dns", "predefined": {"lanboat.test": ["192.0.2.8"]}}
+    ],
+    "rules": [
+      {"source_hostname": ["nas"], "server": "device-dns"}
+    ],
+    "final": "system"
+  }
+}

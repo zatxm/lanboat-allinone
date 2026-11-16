@@ -1,0 +1,31 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [
+    {
+      "type": "wireguard",
+      "tag": "server",
+      "listen": "127.0.0.1",
+      "listen_port": 51820,
+      "private_key": "KMe76Fw6oDXDRMt2JNEZrN8eAi1eWBuRmx0tKVX7cFQ=",
+      "address": [
+        "10.50.0.1/32"
+      ],
+      "peers": [
+        {
+          "public_key": "q4u9r9wP9/aKrBfnikRzu3urELFfTi0iJCaL2TX2DGg=",
+          "allowed_ips": [
+            "10.50.0.2/32"
+          ]
+        }
+      ]
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}

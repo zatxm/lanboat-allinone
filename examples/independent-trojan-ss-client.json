@@ -1,0 +1,29 @@
+{
+  "outbounds": [
+    {
+      "type": "trojan",
+      "tag": "proxy",
+      "tls": {
+        "enabled": true,
+        "server_name": "localhost",
+        "certificate_path": "server-ca.crt"
+      },
+      "shadowsocks": {
+        "enabled": true,
+        "method": "aes-128-gcm",
+        "password": "replace-with-inner-encryption-password"
+      },
+      "server": "127.0.0.1",
+      "server_port": 8443,
+      "password": "replace-with-trojan-password"
+    }
+  ],
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ]
+}

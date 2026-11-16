@@ -1,0 +1,22 @@
+{
+  "inbounds": [{"type": "mixed", "tag": "local", "listen": "127.0.0.1", "listen_port": 1080}],
+  "outbounds": [{"type": "direct", "tag": "direct"}],
+  "dns": {
+    "servers": [
+      {"type": "local", "tag": "system"},
+      {"type": "udp", "tag": "public", "server": "1.1.1.1"}
+    ],
+    "final": "public",
+    "rules": [
+      {"dns_search_domain": {"system": "corp.example"}, "domain_suffix": "corp.example", "action": "route", "server": "system"}
+    ]
+  },
+  "route": {
+    "default_domain_resolver": "public",
+    "final": "direct",
+    "rules": [
+      {"port": 53, "action": "hijack-dns"},
+      {"dns_server_address": {"system": "192.168.0.0/16"}, "domain": "internal.example", "action": "reject"}
+    ]
+  }
+}

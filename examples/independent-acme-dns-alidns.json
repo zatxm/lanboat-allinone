@@ -1,0 +1,5 @@
+{
+  "certificate_providers": [{"type": "acme", "tag": "public-cert", "domain": ["*.example.org"], "email": "admin@example.org", "dns01_challenge": {"provider": "alidns", "access_key_id": "REPLACE_WITH_ACCESS_KEY_ID", "access_key_secret": "REPLACE_WITH_ACCESS_KEY_SECRET", "region_id": "cn-hangzhou", "propagation_timeout": "2m", "resolvers": ["223.5.5.5"]}}],
+  "inbounds": [{"type": "trojan", "tag": "server", "listen": "0.0.0.0", "listen_port": 443, "users": [{"password": "REPLACE_WITH_PROXY_PASSWORD"}], "tls": {"enabled": true, "certificate_provider": "public-cert"}}],
+  "outbounds": [{"type": "direct", "tag": "direct"}]
+}

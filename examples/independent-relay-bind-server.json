@@ -1,0 +1,28 @@
+{
+  "inbounds": [
+    {
+      "type": "relay",
+      "tag": "server",
+      "listen": "127.0.0.1",
+      "listen_port": 8444,
+      "bind": true,
+      "users": [
+        {
+          "username": "client",
+          "password": "replace-with-random-relay-password"
+        }
+      ],
+      "tls": {
+        "enabled": true,
+        "certificate_path": "server.crt",
+        "key_path": "server.key"
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}

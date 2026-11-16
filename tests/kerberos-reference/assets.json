@@ -1,0 +1,100 @@
+[
+  {
+    "name": "krb5-admin-server_1.22.1-3ubuntu2_amd64.deb",
+    "url": "https://archive.ubuntu.com/ubuntu/pool/universe/k/krb5/krb5-admin-server_1.22.1-3ubuntu2_amd64.deb",
+    "sha256": "e491724bc7c29dd6a4f3a2c8259684c5437f428ab512304b92939cdf68b4db48",
+    "package": "krb5-admin-server",
+    "version": "1.22.1-3ubuntu2"
+  },
+  {
+    "name": "krb5-kdc_1.22.1-3ubuntu2_amd64.deb",
+    "url": "https://archive.ubuntu.com/ubuntu/pool/universe/k/krb5/krb5-kdc_1.22.1-3ubuntu2_amd64.deb",
+    "sha256": "abb125f5ad780466f9c97b5997f23b4f4c6f27d434ca8a351d5c9fad30ad92d0",
+    "package": "krb5-kdc",
+    "version": "1.22.1-3ubuntu2"
+  },
+  {
+    "name": "krb5-user_1.22.1-3ubuntu2_amd64.deb",
+    "url": "https://archive.ubuntu.com/ubuntu/pool/universe/k/krb5/krb5-user_1.22.1-3ubuntu2_amd64.deb",
+    "sha256": "9e78b0d7d4af1d7bc9e17f3114d531d39dbfc0babd9d3728a06a356d08e756a7",
+    "package": "krb5-user",
+    "version": "1.22.1-3ubuntu2"
+  },
+  {
+    "name": "libevent-2.1-7t64_2.1.13-stable-1build1_amd64.deb",
+    "url": "https://archive.ubuntu.com/ubuntu/pool/main/libe/libevent/libevent-2.1-7t64_2.1.13-stable-1build1_amd64.deb",
+    "sha256": "14749d7d0ca234685749b7199e2a511845422cc2d57830e60cc49bfe73e622c9",
+    "package": "libevent-2.1-7t64",
+    "version": "2.1.13-stable-1build1"
+  },
+  {
+    "name": "libgssapi-krb5-2_1.22.1-3ubuntu2_amd64.deb",
+    "url": "https://archive.ubuntu.com/ubuntu/pool/main/k/krb5/libgssapi-krb5-2_1.22.1-3ubuntu2_amd64.deb",
+    "sha256": "bf873c6a8e757700bcf99924f40fd30d9e3c34ed173a05bf0f23ad381f9c6ef2",
+    "package": "libgssapi-krb5-2",
+    "version": "1.22.1-3ubuntu2"
+  },
+  {
+    "name": "libgssrpc4t64_1.22.1-3ubuntu2_amd64.deb",
+    "url": "https://archive.ubuntu.com/ubuntu/pool/main/k/krb5/libgssrpc4t64_1.22.1-3ubuntu2_amd64.deb",
+    "sha256": "012924039ebe285eab628f2557757dba25d69e0a14dd95ab5ba5a043f19c419b",
+    "package": "libgssrpc4t64",
+    "version": "1.22.1-3ubuntu2"
+  },
+  {
+    "name": "libk5crypto3_1.22.1-3ubuntu2_amd64.deb",
+    "url": "https://archive.ubuntu.com/ubuntu/pool/main/k/krb5/libk5crypto3_1.22.1-3ubuntu2_amd64.deb",
+    "sha256": "3d9a1c4c653cb0f4085bcc0be8f35518bde39e4d15f4849673b50e6eeb7cb839",
+    "package": "libk5crypto3",
+    "version": "1.22.1-3ubuntu2"
+  },
+  {
+    "name": "libkadm5clnt-mit12_1.22.1-3ubuntu2_amd64.deb",
+    "url": "https://archive.ubuntu.com/ubuntu/pool/main/k/krb5/libkadm5clnt-mit12_1.22.1-3ubuntu2_amd64.deb",
+    "sha256": "4a955680e35ce04cfbeb8d3df0d4c13a253d428d1a8734321f5d452d231838fb",
+    "package": "libkadm5clnt-mit12",
+    "version": "1.22.1-3ubuntu2"
+  },
+  {
+    "name": "libkadm5srv-mit12_1.22.1-3ubuntu2_amd64.deb",
+    "url": "https://archive.ubuntu.com/ubuntu/pool/main/k/krb5/libkadm5srv-mit12_1.22.1-3ubuntu2_amd64.deb",
+    "sha256": "1f6e94a998dc744708e0821781821fc2cb04abfdc346529a75f970b0466646e0",
+    "package": "libkadm5srv-mit12",
+    "version": "1.22.1-3ubuntu2"
+  },
+  {
+    "name": "libkdb5-10t64_1.22.1-3ubuntu2_amd64.deb",
+    "url": "https://archive.ubuntu.com/ubuntu/pool/main/k/krb5/libkdb5-10t64_1.22.1-3ubuntu2_amd64.deb",
+    "sha256": "6bc59ec50f6c206f557ac6bf27fb9c48bbee300a3c666ceb7bf727d187ca58cd",
+    "package": "libkdb5-10t64",
+    "version": "1.22.1-3ubuntu2"
+  },
+  {
+    "name": "libkrb5-3_1.22.1-3ubuntu2_amd64.deb",
+    "url": "https://archive.ubuntu.com/ubuntu/pool/main/k/krb5/libkrb5-3_1.22.1-3ubuntu2_amd64.deb",
+    "sha256": "ccf31be690d02b1accd7943cc4a61a1fec4e9bf57602e61936f8913c62b15f7e",
+    "package": "libkrb5-3",
+    "version": "1.22.1-3ubuntu2"
+  },
+  {
+    "name": "libkrb5support0_1.22.1-3ubuntu2_amd64.deb",
+    "url": "https://archive.ubuntu.com/ubuntu/pool/main/k/krb5/libkrb5support0_1.22.1-3ubuntu2_amd64.deb",
+    "sha256": "5d6ae85df881ac7930b7789d176ccc81a7220040d36cc0cd142b2b8b254f4a17",
+    "package": "libkrb5support0",
+    "version": "1.22.1-3ubuntu2"
+  },
+  {
+    "name": "libverto-libevent1t64_0.3.1-1.3ubuntu1_amd64.deb",
+    "url": "https://archive.ubuntu.com/ubuntu/pool/main/libv/libverto/libverto-libevent1t64_0.3.1-1.3ubuntu1_amd64.deb",
+    "sha256": "eb7303bfcac1973bc260b6a66270acbee86018db8b91d2e5bd20b3f78be4fa57",
+    "package": "libverto-libevent1t64",
+    "version": "0.3.1-1.3ubuntu1"
+  },
+  {
+    "name": "libverto1t64_0.3.1-1.3ubuntu1_amd64.deb",
+    "url": "https://archive.ubuntu.com/ubuntu/pool/main/libv/libverto/libverto1t64_0.3.1-1.3ubuntu1_amd64.deb",
+    "sha256": "318d218a2edfd01d44a74df0043f1acb40996e35d22b77769769b926bf9a5c73",
+    "package": "libverto1t64",
+    "version": "0.3.1-1.3ubuntu1"
+  }
+]

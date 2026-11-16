@@ -1,0 +1,10 @@
+{
+  "log": {"level": "info"},
+  "inbounds": [{"type": "mixed", "tag": "local", "listen": "127.0.0.1", "listen_port": 2080}],
+  "outbounds": [{
+    "type": "openconnect", "tag": "vpn", "server": "vpn.example.com", "server_port": 443,
+    "auth_timeout": "5m",
+    "tls": {"enabled": true, "server_name": "vpn.example.com"}
+  }],
+  "route": {"final": "vpn"}
+}

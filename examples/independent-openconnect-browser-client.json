@@ -1,0 +1,37 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "openconnect",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 48443,
+      "username": "example-user",
+      "password": "replace-this-example-password",
+      "group": "all",
+      "mtu": 1280,
+      "tls": {
+        "enabled": true,
+        "server_name": "localhost",
+        "certificate_path": "server-ca.crt",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "safari26_3"
+        }
+      }
+    }
+  ],
+  "route": {
+    "final": "proxy"
+  }
+}

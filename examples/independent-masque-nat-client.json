@@ -1,0 +1,35 @@
+{
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "endpoints": [
+    {
+      "type": "masque-client",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 8448,
+      "username": "client",
+      "password": "replace-with-long-random-password",
+      "tls": {
+        "enabled": true,
+        "server_name": "localhost",
+        "certificate_path": "server-ca.crt"
+      },
+      "version": 3,
+      "path": "/vpn/{target}/{ipproto}/",
+      "disable_version_fallback": false,
+      "udp_timeout": "5m",
+      "udp_mapping": "endpoint_independent",
+      "udp_filtering": "address_and_port_dependent",
+      "udp_nat_max": 4096
+    }
+  ],
+  "route": {
+    "final": "proxy"
+  }
+}

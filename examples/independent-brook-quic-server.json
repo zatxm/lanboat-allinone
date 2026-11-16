@@ -1,0 +1,9 @@
+{
+  "inbounds": [{
+    "type":"brook","tag":"brook","listen":"127.0.0.1","listen_port":9999,
+    "password":"replace-this-demo-password",
+    "transport":{"type":"quic"},
+    "tls":{"enabled":true,"certificate_path":"server.crt","key_path":"server.key"}
+  }],
+  "outbounds":[{"type":"direct","tag":"direct"}]
+}

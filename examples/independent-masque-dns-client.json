@@ -1,0 +1,38 @@
+{
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "local",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "masque",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 8448,
+      "username": "client",
+      "password": "replace-with-long-random-password",
+      "masque_mode": "ip",
+      "tls": {
+        "enabled": true,
+        "server_name": "localhost",
+        "certificate_path": "server-ca.crt"
+      },
+      "masque_accept_dns": true,
+      "masque_accept_pref64": true
+    }
+  ],
+  "dns": {
+    "servers": [
+      {
+        "type": "masque",
+        "tag": "vpn-dns",
+        "endpoint": "proxy"
+      }
+    ],
+    "final": "vpn-dns"
+  }
+}
