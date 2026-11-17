@@ -3,6 +3,8 @@
 package native
 
 import (
+	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -11,6 +13,7 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -231,6 +234,10 @@ func (t *tunTunnel) configureDNS() error {
 	if t.dnsMode() == "disabled" {
 		return nil
 	}
+	return t.configureDarwinDNS(t.runtime.ctx, exec.Command("/usr/sbin/scutil"))
+}
+
+func (t *tunTunnel) configureDarwinDNS(ctx context.Context, command *exec.Cmd) error {
 	key := fmt.Sprintf("State:/Network/Service/lanboat-%d-%s", os.Getpid(), t.name)
 	var input strings.Builder
 	for _, a := range []netip.Addr{t.local4, t.local6} {
@@ -245,7 +252,8 @@ func (t *tunTunnel) configureDNS() error {
 	}
 	fmt.Fprintf(&input, "d.init\nd.add ServerAddresses * %s\nd.add SupplementalMatchDomains * \"\"\nd.add SupplementalMatchOrders # 1\nd.add InterfaceName %s\nadd %s/DNS temporary\n", strings.Join(t.dnsAddresses(), " "), t.name, key)
 	// The dynamic-store session owns temporary keys. EOF also restores DNS after a parent crash.
-	command := exec.Command("/usr/sbin/scutil")
+	var output bytes.Buffer
+	command.Stdout, command.Stderr = &output, &output
 	writer, e := command.StdinPipe()
 	if e != nil {
 		return e
@@ -254,25 +262,76 @@ func (t *tunTunnel) configureDNS() error {
 		writer.Close()
 		return e
 	}
-	exited := make(chan error, 1)
-	go func() { exited <- command.Wait() }()
-	previous := t.cleanup
-	t.cleanup = func() {
+	exited := make(chan struct{})
+	var sessionErr error
+	go func() { sessionErr = command.Wait(); close(exited) }()
+	stopSession := func() {
 		writer.Close()
 		select {
-		case e := <-exited:
-			if e != nil {
-				t.runtime.logger.Debug("TUN DNS session ended", zap.Error(e))
+		case <-exited:
+			if sessionErr != nil {
+				t.runtime.logger.Debug("TUN DNS session ended", zap.Error(sessionErr))
 			}
 		case <-time.After(3 * time.Second):
 			command.Process.Kill()
 			<-exited
 		}
-		previous()
 	}
+	previous := t.cleanup
+	t.cleanup = func() { stopSession(); previous() }
 	if _, e = io.WriteString(writer, input.String()); e != nil {
-		return e
+		stopSession()
+		return fmt.Errorf("write macOS TUN DNS configuration: %w: %s", e, strings.TrimSpace(output.String()))
 	}
-	_, e = tunCommand("/usr/sbin/scutil", "", "-w", key+"/DNS", "-t", "3")
-	return e
+	// Read back both our owned key and configd's effective resolver list before returning.
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	sessionFailure := func() error {
+		return fmt.Errorf("macOS TUN DNS session exited before publication: %v: %s", sessionErr, strings.TrimSpace(output.String()))
+	}
+	owned := false
+	var last []byte
+	for {
+		select {
+		case <-exited:
+			return sessionFailure()
+		default:
+		}
+		query := exec.CommandContext(ctx, "/usr/sbin/scutil", "--dns")
+		if !owned {
+			query = exec.CommandContext(ctx, "/usr/sbin/scutil")
+			query.Stdin = strings.NewReader("show " + key + "/DNS\n")
+		}
+		last, e = query.CombinedOutput()
+		if ctx.Err() != nil {
+			return fmt.Errorf("publish macOS TUN DNS: %w: %s", ctx.Err(), strings.TrimSpace(string(last)))
+		}
+		if e != nil {
+			return fmt.Errorf("read macOS TUN DNS state: %w: %s", e, strings.TrimSpace(string(last)))
+		}
+		if !owned {
+			owned = bytes.Contains(last, []byte("ServerAddresses"))
+			if owned {
+				continue
+			}
+		} else {
+			state := parseDNSNetwork(bytes.NewReader(last), true)
+			ready := true
+			for _, address := range t.dnsAddresses() {
+				ready = ready && slices.Contains(state.addresses, netip.MustParseAddr(address).Unmap().WithZone(""))
+			}
+			if ready {
+				return nil
+			}
+		}
+		select {
+		case <-exited:
+			return sessionFailure()
+		case <-ctx.Done():
+			return fmt.Errorf("publish macOS TUN DNS: %w: %s", ctx.Err(), strings.TrimSpace(string(last)))
+		case <-ticker.C:
+		}
+	}
 }

@@ -80,6 +80,18 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: sudo .cache/tun-platform/native.test '-test.run=^(TestNativeTUNNamespace|TestTUN|TestUTUN)' -test.v -test.timeout=5m
+      - name: Repeat macOS TUN startup and cleanup
+        if: runner.os == 'macOS'
+        shell: bash
+        run: sudo .cache/tun-platform/native.test '-test.run=^TestTUNSystemDevice$' -test.count=20 -test.v -test.timeout=3m
+      - name: macOS DNS startup race regression
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          go test -c -race -o .cache/tun-platform/native-race.test ./native
+          sudo .cache/tun-platform/native-race.test '-test.run=^TestTUNDarwinDNSStartup$' -test.count=3 -test.v -test.timeout=90s
       - name: Preserve Windows TUN diagnostics
         if: always() && runner.os == 'Windows'
         uses: actions/upload-artifact@v7
