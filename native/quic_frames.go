@@ -118,7 +118,7 @@ func (c *quicConn) handleFrames(level int, pn uint64, data []byte) error {
 					}
 				}
 			}
-			c.acknowledge(level, largest, delay, ranges, time.Now())
+			c.acknowledge(level, largest, delay, ranges, quicNow())
 		case kind == 6:
 			offset, err := r.v()
 			if err != nil {

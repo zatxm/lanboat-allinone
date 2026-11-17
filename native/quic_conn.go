@@ -119,7 +119,7 @@ func newQUICConn(ctx context.Context, cfg *tls.Config, local, remote net.Addr, c
 		opt = options[0]
 	}
 	opt = opt.defaults()
-	now := time.Now()
+	now := quicNow()
 	minimum := max(1200, opt.initial)
 	c := &quicConn{keepAlive: 30 * time.Second, minInitial: minimum, ctx: child, cancel: cancel, local: local, remote: remote, pathRemote: remote, cid: append([]byte{}, cid...), dcid: append([]byte{}, dcid...), originalCID: append([]byte{}, odcid...), retryCID: append([]byte{}, retry...), server: server, send: send, cleanup: cleanup, ready: make(chan struct{}), done: make(chan struct{}), packets: make(chan quicDatagram, quicInboxPackets), ops: make(chan *quicOperation, 128), wake: make(chan struct{}, 1), accept: make(chan *quicStream, 128), datagrams: make(chan []byte, 128), streams: map[uint64]*quicStream{}, receiveMax: opt.connectionWindow, start: now, lastReceive: now, lastSend: now, handshakeDeadline: now.Add(15 * time.Second), srtt: 333 * time.Millisecond, rttvar: 166 * time.Millisecond, cwnd: 10 * quicMSS, ssthresh: 4 << 20}
 	c.idleTimeout, c.streamWindow, c.connectionWindow = opt.idleTimeout, opt.streamWindow, opt.connectionWindow
@@ -349,7 +349,7 @@ func (c *quicConn) run() {
 			result = err
 			return
 		}
-		now := time.Now()
+		now := quicNow()
 		c.servicePath(now)
 		c.updateWindows()
 		c.serviceOperations()
@@ -398,7 +398,7 @@ func (c *quicConn) run() {
 			default:
 			}
 		}
-		timer.Reset(max(time.Millisecond, time.Until(deadline)))
+		timer.Reset(max(time.Millisecond, deadline.Sub(quicNow())))
 		select {
 		case <-c.ctx.Done():
 			result = c.ctx.Err()
@@ -415,7 +415,8 @@ func (c *quicConn) run() {
 				c.pending = append(c.pending, op)
 			}
 		case <-c.wake:
-		case now := <-timer.C:
+		case <-timer.C:
+			now := quicNow()
 			if !c.established && !now.Before(c.handshakeDeadline) {
 				result = errors.New("QUIC handshake timeout")
 				return
@@ -794,7 +795,7 @@ func (c *quicConn) handleDatagram(packet []byte) error {
 			c.writePhaseAcked = false
 			c.phaseFirstPN = space.nextPN
 		}
-		c.lastReceive = time.Now()
+		c.lastReceive = quicNow()
 		if !c.server && header.level == 0 && len(c.retryCID) == 0 && len(header.scid) > 0 {
 			c.dcid = append(c.dcid[:0], header.scid...)
 			c.peerCIDs[0] = quicPeerCID{id: append([]byte{}, header.scid...)}
@@ -804,7 +805,7 @@ func (c *quicConn) handleDatagram(packet []byte) error {
 			continue
 		}
 		if header.level == 2 && c.established && int64(pn) == space.largest {
-			c.observePath(c.packetRemote, len(part), time.Now())
+			c.observePath(c.packetRemote, len(part), quicNow())
 		}
 		if err := c.handleFrames(header.level, pn, plain); err != nil {
 			return fmt.Errorf("QUIC level %d: %w", header.level, err)

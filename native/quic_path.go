@@ -102,9 +102,9 @@ func (c *quicConn) sendPathFrame(remote net.Addr, frame []byte) error {
 
 func (c *quicConn) pathResponse(body []byte) {
 	p := c.path
-	if p != nil && c.packetRemote != nil && sameQUICAddress(p.remote, c.packetRemote) && time.Now().Before(p.expires) && bytes.Equal(p.token[:], body) {
+	if p != nil && c.packetRemote != nil && sameQUICAddress(p.remote, c.packetRemote) && quicNow().Before(p.expires) && bytes.Equal(p.token[:], body) {
 		c.pathRemote = p.remote
 		c.path = nil
-		c.resetPMTU(time.Now())
+		c.resetPMTU(quicNow())
 	}
 }

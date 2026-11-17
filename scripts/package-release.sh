@@ -12,7 +12,7 @@ esac
 mkdir -p dist
 payload=$(mktemp -d)
 trap 'rm -rf "$payload"' EXIT
-binary=lanboat-allinone-$target_os-$target_arch
+binary=lanboat-allinone-${target_os/darwin/macos}-$target_arch
 if [[ $target_os == windows ]]; then binary+=.exe; fi
 CGO_ENABLED=0 GOOS="$target_os" GOARCH="$target_arch" \
   go build -mod=readonly -trimpath -buildvcs=false -ldflags '-s -w -buildid=' \

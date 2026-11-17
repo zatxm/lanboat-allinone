@@ -50,7 +50,7 @@ jobs:
           TARGET_ARCH: ${{ matrix.goarch }}
         run: |
           bash scripts/package-release.sh "$TARGET_OS" "$TARGET_ARCH"
-          binary="dist/lanboat-allinone-$TARGET_OS-$TARGET_ARCH"
+          binary="dist/lanboat-allinone-${TARGET_OS/darwin/macos}-$TARGET_ARCH"
           if [[ $TARGET_OS == windows ]]; then binary+=.exe; fi
           echo "path=$binary" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
@@ -94,12 +94,12 @@ jobs:
           cache-dependency-path: go.sum
       - uses: actions/download-artifact@v8
         with:
-          name: lanboat-allinone-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+          name: lanboat-allinone-${{ matrix.goos == 'darwin' && 'macos' || matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
           skip-decompress: true
           path: dist
       - uses: actions/download-artifact@v8
         with:
-          name: lanboat-allinone-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}.sha256
+          name: lanboat-allinone-${{ matrix.goos == 'darwin' && 'macos' || matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}.sha256
           skip-decompress: true
           path: dist
       - name: Run the actual release executable
@@ -107,7 +107,7 @@ jobs:
           TARGET_OS: ${{ matrix.goos }}
           TARGET_ARCH: ${{ matrix.goarch }}
         run: |
-          binary="dist/lanboat-allinone-$TARGET_OS-$TARGET_ARCH"
+          binary="dist/lanboat-allinone-${TARGET_OS/darwin/macos}-$TARGET_ARCH"
           if [[ $TARGET_OS == windows ]]; then binary+=.exe; fi
           python tests/check-release.py "$binary"
       - name: Native API, protocols, DNS and multiple listeners
@@ -116,20 +116,24 @@ jobs:
           mkdir -p build
           go test . -run '^TestIndependentPublicAPI$' -count=1 -timeout=3m
           go test ./internal/nativecmd -count=1 -timeout=3m
-          tests='^(TestIndependentProtocolMatrix|TestMultipleProtocolInbounds|TestShadowsocksCiphers|TestAuthenticationNeverFallsBack|TestVMessIndependentTCPUDP|TestQUICProxyIndependent|TestSSHIndependent|TestSnellIndependentTCPUDP|TestBrookRoundTrip|TestJuicityIndependent|TestNaiveIndependent|TestMieruIndependent|TestTrustTunnelIndependent|TestDNSListenersTCPUDP|TestDNSQUICIndependent|TestDNSQueryOwnership|TestDNSStreamSequentialFrames|TestDNSListenerShutdownCancelsQuery|TestDirectInboundMixedListeners|TestWireGuardNoiseAndReplay|TestUDPLargeDatagrams)$'
+          tests='^(TestIndependentProtocolMatrix|TestMultipleProtocolInbounds|TestShadowsocksCiphers|TestAuthenticationNeverFallsBack|TestVMessIndependentTCPUDP|TestQUICProxyIndependent|TestSSHIndependent|TestSnellIndependentTCPUDP|TestBrookRoundTrip|TestJuicityIndependent|TestNaiveIndependent|TestMieruIndependent|TestTrustTunnelIndependent|TestDNSListenersTCPUDP|TestDNSQUICIndependent|TestDNSQueryOwnership|TestDNSStreamSequentialFrames|TestDNSListenerShutdownCancelsQuery|TestDirectInboundMixedListeners|TestWireGuardNoiseAndReplay|TestUDPLargeDatagrams|TestQUICClockPrecision|TestQUICBBRReceiveBurstLoss)$'
           go test ./native -run "$tests" -count=1 -timeout=8m -json | tee build/native-tests.jsonl
           python - <<'PY'
           import json
           from pathlib import Path
           events = [json.loads(line) for line in Path('build/native-tests.jsonl').read_text().splitlines()]
           assert not any(e['Action'] in ('fail', 'skip') for e in events)
-          assert len({e['Test'] for e in events if e['Action'] == 'pass' and '/' not in e.get('Test', '') and 'Test' in e}) == 21
+          assert len({e['Test'] for e in events if e['Action'] == 'pass' and '/' not in e.get('Test', '') and 'Test' in e}) == 23
           PY
+      - name: QUIC clock and transfer stability without retries
+        run: |
+          set -euo pipefail
+          go test ./native -run '^(TestQUICClockPrecision|TestQUICBBRReceiveBurstLoss|TestJuicityIndependent)$' -count=50 -timeout=4m -json | tee build/quic-stability-tests.jsonl
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: native-tests-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: build/native-tests.jsonl
+          path: build/*-tests.jsonl
 
   tun:
     uses: ./.github/workflows/tun-platforms.yml

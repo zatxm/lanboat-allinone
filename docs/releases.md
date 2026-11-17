@@ -10,14 +10,14 @@
 | Windows | ARM64 | `lanboat-allinone-windows-arm64.exe` |
 | Linux | Intel/AMD 64位 | `lanboat-allinone-linux-amd64` |
 | Linux | ARM64 | `lanboat-allinone-linux-arm64` |
-| macOS | Intel | `lanboat-allinone-darwin-amd64` |
-| macOS | Apple Silicon | `lanboat-allinone-darwin-arm64` |
+| macOS | Intel | `lanboat-allinone-macos-amd64` |
+| macOS | Apple Silicon | `lanboat-allinone-macos-arm64` |
 
 macOS版本是命令行程序。Linux/macOS下载后先授予执行权限，例如：
 
 ```bash
-chmod +x lanboat-allinone-darwin-arm64
-./lanboat-allinone-darwin-arm64 version
+chmod +x lanboat-allinone-macos-arm64
+./lanboat-allinone-macos-arm64 version
 ```
 
 也可将文件重命名为`lanboat-allinone`，后续文档中的命令使用该名称。Windows重命名时保留`.exe`后缀。
@@ -27,7 +27,7 @@ chmod +x lanboat-allinone-darwin-arm64
 每个程序都有同名`.sha256`文件，还提供汇总`SHA256SUMS`。
 
 - Linux：`sha256sum -c lanboat-allinone-linux-amd64.sha256`。
-- macOS：`shasum -a 256 lanboat-allinone-darwin-arm64`。
+- macOS：`shasum -a 256 lanboat-allinone-macos-arm64`。
 - Windows PowerShell：`Get-FileHash .\lanboat-allinone-windows-amd64.exe -Algorithm SHA256`。
 
 将结果与下载的校验值比较，实际文件名按系统和架构调整。

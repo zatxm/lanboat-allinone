@@ -24,8 +24,50 @@ func TestJuicityIndependent(t *testing.T) {
 	s := newTestRuntime(t, Config{Inbounds: []Inbound{in}})
 	out := testOutbound(t, in, s.Address("s"))
 	c := newTestRuntime(t, Config{Outbounds: []Outbound{out}})
+	t.Cleanup(func() { logJuicityFailure(t, c, s) })
 	assertTCP(t, c)
 	assertUDPSizes(t, c, []int{1, 511, 4096, 60000})
+}
+
+func logJuicityFailure(t *testing.T, runtimes ...*Runtime) {
+	if !t.Failed() {
+		return
+	}
+	var peers []*quicConn
+	for _, r := range runtimes {
+		for _, p := range r.quicClients {
+			p.mu.Lock()
+			if p.current != nil {
+				peers = append(peers, p.current.conn)
+			}
+			p.mu.Unlock()
+		}
+		for _, endpoint := range r.quicListeners {
+			endpoint.mu.Lock()
+			for _, conn := range endpoint.conns {
+				peers = append(peers, conn)
+			}
+			endpoint.mu.Unlock()
+		}
+	}
+	for _, r := range runtimes {
+		r.Close()
+	}
+	for _, conn := range peers {
+		<-conn.done
+		t.Logf("QUIC state server=%v cwnd=%d flight=%d retained=%d pto=%d srtt=%v minrtt=%v tokens=%.2f rateNext=%v sent=%d receiveMax=%d consumed=%d pending=%d", conn.server, conn.cwnd, conn.inFlight, conn.retained, conn.ptoCount, conn.srtt, conn.minRTT, conn.rateTokens, conn.rateNext.Sub(conn.rateAt), conn.sendTotal, conn.receiveMax, conn.consumed.Load(), len(conn.pending))
+		if b := conn.bbr; b != nil {
+			t.Logf("BBR state server=%v mode=%d bandwidth=%d pace=%d quantum=%d rounds=%d full=%v delivered=%d appUntil=%d", conn.server, b.mode, b.bandwidth, b.pacing(false), b.quantum(), b.round, b.full, b.delivered, b.appUntil)
+		}
+		for level, space := range conn.spaces {
+			t.Logf("QUIC space server=%v level=%d nextPN=%d largest=%d sent=%d queued=%d ack=%v", conn.server, level, space.nextPN, space.largest, len(space.sent), len(space.queue), space.ack)
+		}
+		for id, stream := range conn.streams {
+			stream.mu.Lock()
+			t.Logf("QUIC stream server=%v id=%d sendOffset=%d sendLimit=%d readOffset=%d highest=%d readLimit=%d holes=%d final=%v", conn.server, id, stream.sendOffset, stream.sendLimit, stream.buffer.position, stream.highest, stream.readLimit, len(stream.buffer.parts), stream.finalKnown)
+			stream.mu.Unlock()
+		}
+	}
 }
 func TestJuicityWrongCredentialsAndPin(t *testing.T) {
 	in := juicityInbound(t)
