@@ -16,6 +16,18 @@ import (
 )
 
 func assertTUNSystemConfiguration(t *testing.T, r *Runtime) {
+	before, _ := exec.Command("/usr/sbin/netstat", "-s", "-p", "ip6").CombinedOutput()
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		after, _ := exec.Command("/usr/sbin/netstat", "-s", "-p", "ip6").CombinedOutput()
+		t.Logf("IPv6 statistics before:\n%s\nafter:\n%s", before, after)
+		for _, args := range [][]string{{"-s", "-p", "udp"}, {"-rn", "-f", "inet6"}} {
+			text, err := exec.Command("/usr/sbin/netstat", args...).CombinedOutput()
+			t.Logf("netstat %v: %s %v", args, text, err)
+		}
+	})
 	text, e := tunCommand("/usr/sbin/scutil", "", "--dns")
 	if e != nil || !strings.Contains(text, "172.19.0.2") {
 		t.Fatal("macOS DNS resolver was not published", text, e)
@@ -81,4 +93,21 @@ func TestTUNDarwinRouteMessage(t *testing.T) {
 			t.Fatal("route gateway", gateway)
 		}
 	}
+}
+
+func TestTUNDarwinUDPWithoutKernelReassembly(t *testing.T) {
+	const option = "net.inet6.ip6.maxfragpackets"
+	previous, err := tunCommand("/usr/sbin/sysctl", "", "-n", option)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tunCommand("/usr/sbin/sysctl", "", "-w", option+"=0"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if _, err := tunCommand("/usr/sbin/sysctl", "", "-w", option+"="+strings.TrimSpace(previous)); err != nil {
+			t.Error("restore IPv6 reassembly policy", err)
+		}
+	})
+	TestTUNSystemDevice(t)
 }

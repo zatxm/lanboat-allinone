@@ -53,7 +53,10 @@ func TestTUNSystemDevice(t *testing.T) {
 		}
 		c.SetDeadline(time.Now().Add(3 * time.Second))
 		want := bytes.Repeat([]byte{9}, 4096)
-		c.Write(want)
+		t.Logf("TUN UDP %s -> %s at %s", c.LocalAddr(), address, time.Now().Format(time.RFC3339Nano))
+		if n, err := c.Write(want); err != nil || n != len(want) {
+			t.Fatalf("UDP send %s: %d %v", address, n, err)
+		}
 		got := make([]byte, 65535)
 		n, e := c.Read(got)
 		c.Close()

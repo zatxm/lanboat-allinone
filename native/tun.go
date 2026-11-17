@@ -452,6 +452,11 @@ func tunRoutePrefixes(in Inbound) []netip.Prefix {
 func (t *tunTunnel) writePacket(packet []byte) error {
 	t.writeMu.Lock()
 	defer t.writeMu.Unlock()
+	// utun injects received IP packets; splitting them needlessly depends on kernel reassembly.
+	if device, ok := t.device.(*framedTUN); ok {
+		_, err := device.Write(packet)
+		return err
+	}
 	return writeIPFragments(packet, t.in.MTU, t.packetID.Add(1), func(b []byte) error { _, e := t.device.Write(b); return e })
 }
 func writeIPFragments(packet []byte, mtu int, id uint32, write func([]byte) error) error {

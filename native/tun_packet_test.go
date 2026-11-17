@@ -90,3 +90,31 @@ func FuzzTUNPacket(f *testing.F) {
 		}
 	})
 }
+
+func TestTUNFramedDatagramInjection(t *testing.T) {
+	for _, family := range []string{"4", "6"} {
+		t.Run(family, func(t *testing.T) {
+			source, target := netip.MustParseAddr("192.0.2.21"), netip.MustParseAddr("172.19.0.1")
+			header := uint32(2)
+			if family == "6" {
+				source, target = netip.MustParseAddr("2001:db8::21"), netip.MustParseAddr("fdfe:dcba:9876::1")
+				header = 30
+			}
+			for _, size := range []int{4096, 60000} {
+				packet := makeUDPPacket(source, target, 9000, 12000, bytes.Repeat([]byte{9}, size))
+				device := &packetDevice{}
+				tunnel := &tunTunnel{device: &framedTUN{ReadWriteCloser: device}, in: Inbound{MTU: 1280}}
+				if err := tunnel.writePacket(packet); err != nil {
+					t.Fatal(err)
+				}
+				if len(device.packets) != 1 {
+					t.Fatalf("kernel injection fragmented a complete UDP datagram: %d writes", len(device.packets))
+				}
+				frame := device.packets[0]
+				if binary.BigEndian.Uint32(frame[:4]) != header || !bytes.Equal(frame[4:], packet) {
+					t.Fatal("utun datagram changed")
+				}
+			}
+		})
+	}
+}

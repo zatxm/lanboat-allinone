@@ -79,11 +79,21 @@ jobs:
       - name: Unix device tests in disposable runner
         if: runner.os != 'Windows'
         shell: bash
-        run: sudo .cache/tun-platform/native.test '-test.run=^(TestNativeTUNNamespace|TestTUN|TestUTUN)' -test.v -test.timeout=5m
+        run: |
+          set -euo pipefail
+          sudo .cache/tun-platform/native.test '-test.run=^(TestNativeTUNNamespace|TestTUN|TestUTUN)' -test.v -test.timeout=5m 2>&1 | tee .cache/tun-platform/tests.log
       - name: Repeat macOS TUN startup and cleanup
         if: runner.os == 'macOS'
         shell: bash
-        run: sudo .cache/tun-platform/native.test '-test.run=^TestTUNSystemDevice$' -test.count=20 -test.v -test.timeout=3m
+        run: |
+          set -euo pipefail
+          sudo .cache/tun-platform/native.test '-test.run=^TestTUNSystemDevice$' -test.count=200 -test.v -test.timeout=6m 2>&1 | tee .cache/tun-platform/macos-stability.log
+      - name: macOS UDP without kernel IPv6 reassembly
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo .cache/tun-platform/native.test '-test.run=^TestTUNDarwinUDPWithoutKernelReassembly$' -test.count=20 -test.v -test.timeout=2m 2>&1 | tee .cache/tun-platform/macos-reassembly.log
       - name: macOS DNS startup race regression
         if: runner.os == 'macOS'
         shell: bash
@@ -101,4 +111,12 @@ jobs:
             .cache/tun-platform/tests.log
             .cache/tun-platform/packets.txt
             .cache/tun-platform/packets.etl
+          if-no-files-found: warn
+
+      - name: Preserve macOS TUN diagnostics
+        if: always() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: tun-diagnostics-macos-${{ matrix.goarch }}
+          path: .cache/tun-platform/*.log
           if-no-files-found: warn
