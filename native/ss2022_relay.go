@@ -34,8 +34,9 @@ func ss2022RelayTCP(key *ssKey, initial []byte) (*ssKey, []byte, error) {
 func (r *Runtime) serveSS2022Relay(in Inbound, raw net.Conn, q request) error {
 	var remote net.Conn
 	err := func() error {
-		buffer := buffers.Get().([]byte)
-		defer buffers.Put(buffer)
+		owner := buffers.Get().(*[32 * 1024]byte)
+		defer buffers.Put(owner)
+		buffer := owner[:]
 		// Preserve the one-read/one-write initial flight used by the final server.
 		n, err := raw.Read(buffer)
 		if err != nil {

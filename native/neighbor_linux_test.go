@@ -16,6 +16,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 func TestNeighborLinuxNamespace(t *testing.T) {
@@ -84,7 +86,7 @@ func TestNeighborLinuxNamespace(t *testing.T) {
 	if privacy.metadata.SourceHostname != "nas" || privacy.metadata.SourceMACAddress != neighborTestMAC {
 		t.Fatal("IPv6 privacy address lost MAC-associated hostname", privacy.metadata)
 	}
-	entries := logs.FilterMessage("outbound connection to " + origin.Listener.Addr().String()).All()
+	entries := logs.FilterMessage(logOutboundConnection).FilterField(zap.String("destination", origin.Listener.Addr().String())).All()
 	if len(entries) != 1 || entries[0].ContextMap()["source_mac_address"] != neighborTestMAC || entries[0].ContextMap()["source_hostname"] != "nas" {
 		t.Fatal("missing neighbor logs", logs.All())
 	}

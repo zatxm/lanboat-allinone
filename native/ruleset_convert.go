@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/netip"
 	"regexp"
 	"sort"
@@ -373,4 +374,34 @@ func boolByte(b bool) byte {
 		return 1
 	}
 	return 0
+}
+
+// DecodeRuleSet returns the source form of a binary rule set.
+func DecodeRuleSet(data []byte) ([]byte, error) {
+	rules, err := parseRuleSet(data, "binary")
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(map[string]any{"version": 4, "rules": rules})
+}
+
+func MatchRuleSet(data []byte, target string) (bool, error) {
+	items, err := parseRuleSet(data, "binary")
+	if err != nil {
+		return false, err
+	}
+	snapshot, err := compileRuleSet(items)
+	if err != nil {
+		return false, err
+	}
+	q := request{network: "tcp", address: net.JoinHostPort(target, "0")}
+	if ip, err := netip.ParseAddr(target); err == nil {
+		q.ips = []netip.Addr{ip}
+	}
+	for _, rule := range snapshot.rules {
+		if rule.evaluate(q) == matchYes {
+			return true, nil
+		}
+	}
+	return false, nil
 }

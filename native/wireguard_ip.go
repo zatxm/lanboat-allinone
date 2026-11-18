@@ -474,26 +474,35 @@ func (s *wgIPStack) icmp(p tunPacket) {
 	}
 }
 func makeWGIP(source, dest netip.Addr, protocol byte, segment []byte) []byte {
+	b := newWGIP(source, dest, protocol, len(segment))
+	copy(b[len(b)-len(segment):], segment)
+	return b
+}
+
+// newWGIP allocates an IP packet with its header filled in and a zeroed
+// transport segment of the given size.
+func newWGIP(source, dest netip.Addr, protocol byte, size int) []byte {
 	header := 20
 	if source.Is6() {
 		header = 40
 	}
-	b := make([]byte, header+len(segment))
+	b := make([]byte, header+size)
+	s, sn := addrBytes(source)
+	d, dn := addrBytes(dest)
 	if source.Is4() {
 		b[0] = 0x45
 		binary.BigEndian.PutUint16(b[2:], uint16(len(b)))
 		b[8], b[9] = 64, protocol
-		copy(b[12:], source.AsSlice())
-		copy(b[16:], dest.AsSlice())
+		copy(b[12:16], s[:sn])
+		copy(b[16:20], d[:dn])
 		binary.BigEndian.PutUint16(b[10:], checksum(b[:20], 0))
 	} else {
 		b[0] = 0x60
-		binary.BigEndian.PutUint16(b[4:], uint16(len(segment)))
+		binary.BigEndian.PutUint16(b[4:], uint16(size))
 		b[6], b[7] = protocol, 64
-		copy(b[8:], source.AsSlice())
-		copy(b[24:], dest.AsSlice())
+		copy(b[8:24], s[:sn])
+		copy(b[24:40], d[:dn])
 	}
-	copy(b[header:], segment)
 	return b
 }
 
@@ -648,19 +657,25 @@ func newWGTCP(s *wgIPStack, key tunFlowKey, server bool) *wgTCPConn {
 func tcpBefore(a, b uint32) bool { return int32(a-b) < 0 }
 func (c *wgTCPConn) signal()     { signalQUIC(c.wakeRead); signalQUIC(c.wakeWrite) }
 func (c *wgTCPConn) packetLocked(seq uint32, flags byte, data []byte) []byte {
-	segment := make([]byte, 20+len(data))
+	size := 20 + len(data)
+	if flags&2 != 0 {
+		// SYN segments carry only the MSS option.
+		size = 24
+	}
+	packet := newWGIP(c.key.source, c.key.destination, 6, size)
+	segment := packet[len(packet)-size:]
 	binary.BigEndian.PutUint16(segment, c.key.sport)
 	binary.BigEndian.PutUint16(segment[2:], c.key.dport)
 	binary.BigEndian.PutUint32(segment[4:], seq)
 	binary.BigEndian.PutUint32(segment[8:], c.receive)
 	segment[12], segment[13] = 5<<4, flags
 	binary.BigEndian.PutUint16(segment[14:], uint16(max(0, 65535-c.queued)))
-	copy(segment[20:], data)
 	if flags&2 != 0 {
-		segment = append(segment[:20], 0x02, 4, byte(c.mss>>8), byte(c.mss))
+		segment[20], segment[21], segment[22], segment[23] = 0x02, 4, byte(c.mss>>8), byte(c.mss)
 		segment[12] = 6 << 4
+	} else {
+		copy(segment[20:], data)
 	}
-	packet := makeWGIP(c.key.source, c.key.destination, 6, segment)
 	p, _ := parseTunPacket(packet)
 	binary.BigEndian.PutUint16(packet[p.header+16:], transportChecksum(p, segment))
 	return packet

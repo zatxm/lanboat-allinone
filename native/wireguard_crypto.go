@@ -2,6 +2,7 @@ package native
 
 import (
 	"bytes"
+	"crypto/cipher"
 	"crypto/ecdh"
 	"crypto/hmac"
 	"crypto/rand"
@@ -104,6 +105,9 @@ type wgTransport struct {
 	at                      time.Time
 	confirmed               bool
 	rekeyAfter, rejectAfter time.Duration
+	// Per-direction ciphers and nonce scratch reused across packets; guarded by mu.
+	sendAEAD, receiveAEAD   cipher.AEAD
+	sendNonce, receiveNonce [12]byte
 }
 
 func wgInitiate(private *ecdh.PrivateKey, remote, psk []byte) (*wgHandshake, error) {
@@ -296,18 +300,20 @@ func (t *wgTransport) sealPadded(packet []byte, kind uint32, prefix, suffix, pad
 	if padding < 0 {
 		padding = ((len(packet) + 15) &^ 15) - len(packet)
 	}
+	if t.sendAEAD == nil {
+		t.sendAEAD, _ = newChaChaAEAD(t.send, false)
+	}
 	b := make([]byte, prefix, prefix+32+len(packet)+padding+suffix)
 	rand.Read(b)
 	b = binary.LittleEndian.AppendUint32(b, kind)
 	b = binary.LittleEndian.AppendUint32(b, t.remote)
 	b = binary.LittleEndian.AppendUint64(b, t.counter)
-	nonce := make([]byte, 12)
-	binary.LittleEndian.PutUint64(nonce[4:], t.counter)
+	binary.LittleEndian.PutUint64(t.sendNonce[4:], t.counter)
 	t.counter++
-	plain := make([]byte, len(packet)+padding)
-	copy(plain, packet)
-	a, _ := newChaChaAEAD(t.send, false)
-	return a.Seal(b, nonce, plain, nil), nil
+	// Seal the padded plaintext in place after the header.
+	header := len(b)
+	b = append(append(b, packet...), make([]byte, padding)...)
+	return t.sendAEAD.Seal(b[:header], t.sendNonce[:], b[header:], nil), nil
 }
 func (t *wgTransport) open(b []byte) ([]byte, error) {
 	return t.openKind(b, 4)
@@ -325,10 +331,11 @@ func (t *wgTransport) openKind(b []byte, kind uint32) ([]byte, error) {
 	if !t.window.fresh(counter) {
 		return nil, errors.New("replayed WireGuard packet")
 	}
-	nonce := make([]byte, 12)
-	binary.LittleEndian.PutUint64(nonce[4:], counter)
-	a, _ := newChaChaAEAD(t.receive, false)
-	plain, e := a.Open(nil, nonce, b[16:], nil)
+	if t.receiveAEAD == nil {
+		t.receiveAEAD, _ = newChaChaAEAD(t.receive, false)
+	}
+	binary.LittleEndian.PutUint64(t.receiveNonce[4:], counter)
+	plain, e := t.receiveAEAD.Open(nil, t.receiveNonce[:], b[16:], nil)
 	if e != nil {
 		return nil, e
 	}

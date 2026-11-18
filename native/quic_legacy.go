@@ -84,7 +84,7 @@ func (s *quicProxySession) sendTUIC4Packet(id uint32, address string, payload []
 	if e != nil {
 		return e
 	}
-	b := binary.BigEndian.AppendUint32([]byte{4, 2}, id)
+	b := binary.BigEndian.AppendUint32(append(make([]byte, 0, 8+len(addr)+len(payload)), 4, 2), id)
 	b = binary.BigEndian.AppendUint16(b, uint16(len(payload)))
 	b = append(b, addr...)
 	b = append(b, payload...)
@@ -103,7 +103,7 @@ func (s *quicProxySession) sendTUIC4Packet(id uint32, address string, payload []
 		}
 		return q.finishUni()
 	}
-	return s.conn.SendDatagram(s.conn.ctx, b)
+	return s.conn.sendDatagramOwned(s.conn.ctx, b)
 }
 func hy1Rates(up, down int) (uint64, uint64) {
 	if up == 0 {
@@ -401,7 +401,7 @@ func encodeHY1Packet(id uint32, pid uint16, index, count byte, address string, p
 	if e != nil {
 		return nil
 	}
-	b := hy1Text(binary.BigEndian.AppendUint32(nil, id), h)
+	b := hy1Text(binary.BigEndian.AppendUint32(make([]byte, 0, 16+len(h)+len(payload)), id), h)
 	b = binary.BigEndian.AppendUint16(b, uint16(port))
 	b = binary.BigEndian.AppendUint16(b, pid)
 	b = append(b, index, count)

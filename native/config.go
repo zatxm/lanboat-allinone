@@ -110,6 +110,7 @@ type Inbound struct {
 	SIP003Options
 	MasqueOptions
 	OpenConnectOptions
+	QUICReceiveWindows
 	CongestionControl string                    `json:"congestion_control,omitempty"`
 	BBRProfile        string                    `json:"bbr_profile,omitempty"`
 	Bind              bool                      `json:"bind,omitempty"`
@@ -189,6 +190,7 @@ type Outbound struct {
 	SIP003Options
 	MasqueOptions
 	OpenConnectOptions
+	QUICReceiveWindows
 	CongestionControl   string                    `json:"congestion_control,omitempty"`
 	BBRProfile          string                    `json:"bbr_profile,omitempty"`
 	QUIC                bool                      `json:"quic,omitempty"`
@@ -567,6 +569,9 @@ func (c Config) validate() error {
 		if err := validateQUICCongestion(o.Type, o.CongestionControl); err != nil {
 			return err
 		}
+		if err := o.QUICReceiveWindows.validate(); err != nil {
+			return err
+		}
 		if err := validateBBRProfile(o.Type, o.CongestionControl, o.BBRProfile); err != nil {
 			return err
 		}
@@ -923,6 +928,9 @@ func (c Config) validate() error {
 			return errors.New("Relay BIND requires relay type and authenticated users")
 		}
 		if err := validateQUICCongestion(in.Type, in.CongestionControl); err != nil {
+			return err
+		}
+		if err := in.QUICReceiveWindows.validate(); err != nil {
 			return err
 		}
 		if err := validateBBRProfile(in.Type, in.CongestionControl, in.BBRProfile); err != nil {

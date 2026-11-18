@@ -176,7 +176,7 @@ func (s *naiveH2Stream) Write(b []byte) (int, error) {
 		m.send -= int64(n)
 		s.send -= int64(n)
 		m.mu.Unlock()
-		buf := buffers.Get().([]byte)
+		buf := buffers.Get().(*[32 * 1024]byte)[:]
 		wire := buf[:9+n]
 		wire[0], wire[1], wire[2], wire[3], wire[4] = byte(n>>16), byte(n>>8), byte(n), 0, 0
 		binary.BigEndian.PutUint32(wire[5:], s.id)

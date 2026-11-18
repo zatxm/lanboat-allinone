@@ -196,7 +196,7 @@ func (c *masqueClient) ensure(ctx context.Context, version int) (*masqueSession,
 	}
 	cfg = masqueTLSConfig(cfg)
 	cfg.NextProtos = []string{"h3"}
-	q, e := dialQUIC(ctx, c.runtime.ctx, raw, cfg, c.outbound.connection.quic())
+	q, e := dialQUIC(ctx, c.runtime.ctx, raw, cfg, c.outbound.QUICReceiveWindows.apply(c.outbound.connection.quic()))
 	if e != nil {
 		return nil, e
 	}

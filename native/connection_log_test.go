@@ -22,6 +22,15 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 )
 
+// withoutConnectionLog removes the close-tracking wrapper that debug logging
+// adds to routed connections.
+func withoutConnectionLog(c net.Conn) net.Conn {
+	if v, ok := c.(*connectionLogConn); ok {
+		return v.Conn
+	}
+	return c
+}
+
 func loggingRuntime(t *testing.T, cfg Config) (*Runtime, *observer.ObservedLogs) {
 	t.Helper()
 	core, logs := observer.New(zap.DebugLevel)
@@ -76,8 +85,9 @@ func TestConnectionLogHTTPPrivacy(t *testing.T) {
 			if err != nil || string(body) != "ok" {
 				t.Fatal(string(body), err)
 			}
-			in := logs.FilterMessage("inbound connection to www.google.com:" + port).All()
-			out := logs.FilterMessage("outbound connection to www.google.com:" + port).All()
+			destination := zap.String("destination", "www.google.com:"+port)
+			in := logs.FilterMessage(logInboundConnection).FilterField(destination).All()
+			out := logs.FilterMessage(logOutboundConnection).FilterField(destination).All()
 			if len(in) != 1 || len(out) != 1 {
 				t.Fatal(logs.All())
 			}
@@ -167,7 +177,7 @@ func TestConnectionLogUDPAndSelector(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	entries := logs.FilterMessage("outbound connection to " + target).All()
+	entries := logs.FilterMessage(logOutboundConnection).FilterField(zap.String("destination", target)).All()
 	if len(entries) != 1 {
 		t.Fatal("UDP logged per packet instead of per session", logs.All())
 	}
@@ -176,7 +186,7 @@ func TestConnectionLogUDPAndSelector(t *testing.T) {
 		t.Fatal(fields)
 	}
 	// Do not embed the HTTP transport's URL (query may contain credentials).
-	r.logConnection(request{address: target}, "pick", nil, &url.Error{Op: "Get", URL: "https://private.test/path?secret=secret", Err: errors.New("transport failed")})
+	r.logConnection(request{address: target}, "pick", nil, &url.Error{Op: "Get", URL: "https://private.test/path?secret=secret", Err: errors.New("transport failed")}, false)
 	raw, _ := json.Marshal(logs.All())
 	if bytes.Contains(raw, []byte("?secret")) || bytes.Contains(raw, []byte("udp-body-secret")) {
 		t.Fatal("request payload leaked")
@@ -214,6 +224,84 @@ func TestConnectionLogFile(t *testing.T) {
 		if err := json.Unmarshal(line, &v); err != nil || v["connection_id"] == nil || v["destination"] == nil {
 			t.Fatal(string(line), err)
 		}
+		if at, _ := v["time"].(string); at == "" {
+			t.Fatal(string(line), err)
+		}
+	}
+}
+
+func TestConnectionLoggerEvents(t *testing.T) {
+	cfg := Config{Log: LogOptions{Level: "debug"}, Outbounds: []Outbound{{Type: "direct", Tag: "direct"}}, Route: Route{Final: "direct", Rules: []Rule{{Domain: []string{"reject.test"}, Action: "reject"}, {IPCIDR: []string{"127.0.0.1/32"}, Outbound: "direct"}}}}
+	r, logs := loggingRuntime(t, cfg)
+	var events []ConnectionLog
+	r.SetConnectionLogger(func(e ConnectionLog) { events = append(events, e) }, true)
+	target := sudokuTCPEcho(t)
+	conn, err := r.Dial(context.Background(), "tcp", target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controllerEcho(t, conn)
+	conn.Close()
+	conn.Close()
+	if c, err := r.Dial(context.Background(), "tcp", "reject.test:443"); !errors.Is(err, ErrRejected) {
+		if c != nil {
+			c.Close()
+		}
+		t.Fatal(err)
+	}
+	r.Close()
+	if len(events) != 3 {
+		t.Fatal(events)
+	}
+	opened, closed, rejected := events[0], events[1], events[2]
+	if opened.Event != ConnectionOpened || closed.Event != ConnectionClosed || rejected.Event != ConnectionFailed {
+		t.Fatal(events)
+	}
+	if opened.ID == 0 || closed.ID != opened.ID || opened.Destination != target || opened.Rule != "#1 IPCIDR(127.0.0.1/32)" || opened.Outbound != "direct" {
+		t.Fatal(opened, closed)
+	}
+	if closed.Upload == 0 || closed.Upload != closed.Download || closed.Elapsed < opened.Elapsed || closed.Error != nil {
+		t.Fatal(closed)
+	}
+	if rejected.Outbound != "REJECT" || rejected.Rule != "#0 Domain(reject.test)" || !errors.Is(rejected.Error, ErrRejected) {
+		t.Fatal(rejected)
+	}
+	entries := logs.FilterMessage(logConnectionClosed).All()
+	if len(entries) != 1 || entries[0].Level != zapcore.DebugLevel || entries[0].ContextMap()["upload"] != closed.Upload {
+		t.Fatal(entries)
+	}
+}
+
+func TestConnectionLoggerWithoutZapOrCloseEvents(t *testing.T) {
+	cfg := Config{Log: LogOptions{Disabled: true}, Outbounds: []Outbound{{Type: "direct", Tag: "direct"}}, Route: Route{Final: "direct"}}
+	r, logs := loggingRuntime(t, cfg)
+	var events []ConnectionLog
+	r.SetConnectionLogger(func(e ConnectionLog) { events = append(events, e) }, false)
+	conn, err := r.Dial(context.Background(), "tcp", sudokuTCPEcho(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := conn.(*connectionLogConn); ok {
+		t.Fatal("close tracking without a consumer")
+	}
+	conn.Close()
+	r.Close()
+	if logs.Len() != 0 || len(events) != 1 || events[0].Event != ConnectionOpened || events[0].ID == 0 || events[0].Rule != "final" {
+		t.Fatal(events, logs.All())
+	}
+}
+
+func TestConnectionLogText(t *testing.T) {
+	event := ConnectionLog{Event: ConnectionClosed, ID: 7, Network: "tcp", Inbound: "mixed", Source: "127.0.0.1:5000", Destination: "1.2.3.4:443", Domain: "example.com", RouteOutbound: "proxy", Outbound: "hk", Rule: "#2 DomainSuffix(example.com)", Elapsed: 12345 * time.Millisecond, Upload: 1536, Download: 3 << 20, Error: errors.New("reset")}
+	want := "[7 12.3s] connection closed: tcp mixed 127.0.0.1:5000 → 1.2.3.4:443 (example.com) via proxy/hk [#2 DomainSuffix(example.com)] ↑1.5 KB ↓3.0 MB: reset"
+	if got := logText(logConnectionClosed, event.fields()); got != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
+	if got := logText("routing rule matched", []zap.Field{zap.Uint64("connection_id", 7), zap.String("password", "secret")}); got != "[7] routing rule matched" {
+		t.Fatal(got)
+	}
+	if got := logText("dial failed", []zap.Field{zap.String("token", "secret"), zap.Error(errors.New("timeout"))}); got != "dial failed: timeout" {
+		t.Fatal(got)
 	}
 }
 
@@ -223,6 +311,6 @@ func BenchmarkConnectionLogDisabled(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		r.logInbound(&q)
-		r.logConnection(q, "direct", nil, nil)
+		r.logConnection(q, "direct", nil, nil, true)
 	}
 }

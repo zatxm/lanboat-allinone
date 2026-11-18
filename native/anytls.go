@@ -95,10 +95,29 @@ func randomPadding(step paddingStep) int {
 }
 
 func anyFrame(command byte, id uint32, data []byte) []byte {
-	header := []byte{command}
-	header = binary.BigEndian.AppendUint32(header, id)
-	header = binary.BigEndian.AppendUint16(header, uint16(len(data)))
-	return append(header, data...)
+	return appendAnyFrame(make([]byte, 0, 7+len(data)), command, id, data)
+}
+
+func appendAnyFrame(dst []byte, command byte, id uint32, data []byte) []byte {
+	dst = append(dst, command)
+	dst = binary.BigEndian.AppendUint32(dst, id)
+	dst = binary.BigEndian.AppendUint16(dst, uint16(len(data)))
+	return append(dst, data...)
+}
+
+const anyWriteChunk = 32768
+
+// Stream writes and mid-sized received data frames reuse pooled buffers.
+var anyWriteBuffers = sync.Pool{New: func() any { return new([7 + anyWriteChunk]byte) }}
+
+const anyChunkSize = 32 << 10
+
+var anyChunks = sync.Pool{New: func() any { return new([anyChunkSize]byte) }}
+
+// anyChunk is queued stream data; owner is its pooled backing array, if any.
+type anyChunk struct {
+	data  []byte
+	owner *[anyChunkSize]byte
 }
 
 type anySession struct {
@@ -427,12 +446,24 @@ func (s *anySession) loop(in *Inbound, q request) error {
 			return err
 		}
 		command, id, size := header[0], binary.BigEndian.Uint32(header[1:]), int(binary.BigEndian.Uint16(header[5:]))
-		data := make([]byte, size)
+		if command == 0 {
+			if _, err := io.CopyN(io.Discard, s.conn, int64(size)); err != nil {
+				return err
+			}
+			continue
+		}
+		var data []byte
+		var owner *[anyChunkSize]byte
+		// Pool only frames that fill at least a quarter chunk, bounding the
+		// memory a queue of small frames could pin.
+		if command == 2 && size > anyChunkSize/4 && size <= anyChunkSize {
+			owner = anyChunks.Get().(*[anyChunkSize]byte)
+			data = owner[:size]
+		} else {
+			data = make([]byte, size)
+		}
 		if _, err := io.ReadFull(s.conn, data); err != nil {
 			return err
-		}
-		if command == 0 {
-			continue
 		}
 		if in != nil && s.version.Load() == 0 && command != 4 {
 			return errors.New("AnyTLS settings must precede streams")
@@ -464,9 +495,11 @@ func (s *anySession) loop(in *Inbound, q request) error {
 			}()
 		case 2:
 			if stream != nil && len(data) > 0 {
-				if err := stream.push(data); err != nil {
+				if err := stream.push(anyChunk{data, owner}); err != nil {
 					return err
 				}
+			} else if owner != nil {
+				anyChunks.Put(owner)
 			}
 		case 3:
 			if size != 0 {
@@ -613,7 +646,7 @@ type anyStream struct {
 	session                     *anySession
 	id                          uint32
 	mu                          sync.Mutex
-	queue                       [][]byte
+	queue                       []anyChunk
 	bytes                       int
 	err                         error
 	closed                      bool
@@ -631,16 +664,19 @@ func signal(ch chan struct{}) {
 	default:
 	}
 }
-func (c *anyStream) push(data []byte) error {
+func (c *anyStream) push(chunk anyChunk) error {
 	for {
 		c.mu.Lock()
 		if c.closed || c.err != nil {
 			c.mu.Unlock()
+			if chunk.owner != nil {
+				anyChunks.Put(chunk.owner)
+			}
 			return nil
 		}
-		if c.bytes+len(data) <= 256*1024 {
-			c.queue = append(c.queue, data)
-			c.bytes += len(data)
+		if c.bytes+len(chunk.data) <= 256*1024 {
+			c.queue = append(c.queue, chunk)
+			c.bytes += len(chunk.data)
 			signal(c.notify)
 			c.mu.Unlock()
 			return nil
@@ -672,11 +708,14 @@ func (c *anyStream) Read(b []byte) (int, error) {
 	for {
 		c.mu.Lock()
 		if len(c.queue) > 0 {
-			first := c.queue[0]
-			n := copy(b, first)
-			c.queue[0] = first[n:]
-			if len(c.queue[0]) == 0 {
-				c.queue[0] = nil
+			first := &c.queue[0]
+			n := copy(b, first.data)
+			first.data = first.data[n:]
+			if len(first.data) == 0 {
+				if first.owner != nil {
+					anyChunks.Put(first.owner)
+				}
+				*first = anyChunk{}
 				c.queue = c.queue[1:]
 			}
 			c.bytes -= n
@@ -727,10 +766,22 @@ func (c *anyStream) Write(b []byte) (int, error) {
 	if !deadline.IsZero() && time.Now().After(deadline) {
 		return 0, os.ErrDeadlineExceeded
 	}
+	var buffer []byte
+	if len(b) > 2048 {
+		// Small writes are cheaper as exact frames than as pooled buffers.
+		owner := anyWriteBuffers.Get().(*[7 + anyWriteChunk]byte)
+		defer anyWriteBuffers.Put(owner)
+		buffer = owner[:0]
+	}
 	written := 0
 	for len(b) > 0 {
-		n := min(len(b), 32768)
-		if err := c.session.sendStream(anyFrame(2, c.id, b[:n]), c); err != nil {
+		n := min(len(b), anyWriteChunk)
+		frame := buffer
+		if frame == nil {
+			frame = make([]byte, 0, 7+n)
+		}
+		// sendStream writes synchronously and never retains the frame.
+		if err := c.session.sendStream(appendAnyFrame(frame, 2, c.id, b[:n]), c); err != nil {
 			return written, err
 		}
 		written += n

@@ -120,7 +120,7 @@ func validateNeighborRule(o Rule) error {
 	return nil
 }
 
-func matchNeighborRule(o Rule, m Metadata) bool {
+func matchNeighborRule(o *Rule, m *Metadata) bool {
 	if len(o.SourceMACAddress) > 0 && (m.SourceMACAddress == "" || !slices.ContainsFunc(o.SourceMACAddress, func(s string) bool { return normalizedMAC(s) == normalizedMAC(m.SourceMACAddress) })) {
 		return false
 	}

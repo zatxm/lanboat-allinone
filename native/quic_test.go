@@ -15,6 +15,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 func testQUICListener(t *testing.T, options ...quicOptions) *quicEndpoint {
@@ -442,5 +444,102 @@ func TestQUICProxyReference(t *testing.T) {
 				assertUDPSizes(t, client, []int{1, 511, 4096})
 			})
 		}
+	}
+}
+
+func TestQUICBatchSegments(t *testing.T) {
+	type send struct {
+		data    []byte
+		segment int
+	}
+	var sends []send
+	fail := false
+	b := &quicBatch{
+		write: func(buffer, control []byte) error {
+			if fail {
+				return errors.New("offload rejected")
+			}
+			sends = append(sends, send{bytes.Clone(buffer), len(buffer)})
+			return nil
+		},
+		single: func(p []byte) error { sends = append(sends, send{bytes.Clone(p), -1}); return nil },
+	}
+	packet := func(size int, fill byte) []byte { return bytes.Repeat([]byte{fill}, size) }
+	// Equal packets coalesce; a shorter packet closes the batch as its last segment.
+	for _, p := range [][]byte{packet(100, 1), packet(100, 2), packet(60, 3), packet(100, 4)} {
+		if err := b.add(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A larger packet cannot follow smaller segments and starts a new batch.
+	if err := b.add(packet(120, 5)); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.flush(); err != nil {
+		t.Fatal(err)
+	}
+	want := [][]byte{append(append(packet(100, 1), packet(100, 2)...), packet(60, 3)...), packet(100, 4), packet(120, 5)}
+	if len(sends) != len(want) || sends[0].segment != 260 || sends[1].segment != -1 || sends[2].segment != -1 {
+		t.Fatalf("unexpected sends: %d", len(sends))
+	}
+	for i := range want {
+		if !bytes.Equal(sends[i].data, want[i]) {
+			t.Fatalf("send %d mismatch", i)
+		}
+	}
+	// A rejected offload send falls back to individual packets permanently.
+	sends, fail = nil, true
+	for _, p := range [][]byte{packet(80, 6), packet(80, 7)} {
+		if err := b.add(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := b.flush(); err != nil {
+		t.Fatal(err)
+	}
+	fail = false
+	if err := b.add(packet(80, 8)); err != nil {
+		t.Fatal(err)
+	}
+	if !b.disabled || len(sends) != 3 || sends[0].segment != -1 || !bytes.Equal(sends[1].data, packet(80, 7)) || !bytes.Equal(sends[2].data, packet(80, 8)) {
+		t.Fatalf("offload failure did not fall back: %d %v", len(sends), b.disabled)
+	}
+}
+
+func TestQUICReceiveWindowOptions(t *testing.T) {
+	for _, tc := range []struct {
+		windows string
+		ok      bool
+	}{
+		{`"stream_receive_window":"2MB","connection_receive_window":"8MiB"`, true},
+		{`"stream_receive_window":524288`, true},
+		{`"connection_receive_window":"512KB"`, false}, // below the 1MiB default stream window
+		{`"stream_receive_window":"8MB"`, false},       // above the 4MiB default connection window
+		{`"stream_receive_window":"8KB"`, false},
+		{`"connection_receive_window":"65MB"`, false},
+	} {
+		raw := `{"outbounds":[{"type":"hysteria2","tag":"proxy","server":"127.0.0.1","server_port":443,"password":"p","tls":{"enabled":true,"insecure":true},` + tc.windows + `}]}`
+		r, err := New(context.Background(), []byte(raw), zap.NewNop())
+		if r != nil {
+			r.Close()
+		}
+		if (err == nil) != tc.ok {
+			t.Fatalf("%s: %v", tc.windows, err)
+		}
+	}
+	in := Inbound{Type: "hysteria2", Tag: "server", Listen: "127.0.0.1", TLS: certificate(t), Users: []User{{Password: "private"}}}
+	in.QUICReceiveWindows = QUICReceiveWindows{StreamReceiveWindow: 2 << 20, ConnectionReceiveWindow: 8 << 20}
+	server := newTestRuntime(t, Config{Inbounds: []Inbound{in}})
+	out := testOutbound(t, in, server.Address("server"))
+	out.QUICReceiveWindows = QUICReceiveWindows{StreamReceiveWindow: 512 << 10, ConnectionReceiveWindow: 2 << 20}
+	client := newTestRuntime(t, Config{Outbounds: []Outbound{out}})
+	assertTCP(t, client)
+	s, err := client.quicClients["proxy"].session(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := s.conn
+	if c.streamWindow != 512<<10 || c.connectionWindow != 2<<20 || c.peer.bidiRemote != 2<<20 || c.peer.maxData < 8<<20 {
+		t.Fatal("receive windows not applied", c.streamWindow, c.connectionWindow, c.peer.bidiRemote, c.peer.maxData)
 	}
 }

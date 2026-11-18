@@ -270,3 +270,22 @@ func TestWebSocketCloseProbeCancellation(t *testing.T) {
 		t.Fatal("shutdown waited for probe timeout")
 	}
 }
+
+func TestWebSocketMaskOffsets(t *testing.T) {
+	mask := [4]byte{0x12, 0x34, 0x56, 0x78}
+	for size := range 40 {
+		for offset := range 4 {
+			data := make([]byte, size)
+			for i := range data {
+				data[i] = byte(i * 7)
+			}
+			got := bytes.Clone(data)
+			wsMask(got, mask, offset)
+			for i := range data {
+				if got[i] != data[i]^mask[(offset+i)&3] {
+					t.Fatalf("size %d offset %d byte %d", size, offset, i)
+				}
+			}
+		}
+	}
+}

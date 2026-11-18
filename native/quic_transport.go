@@ -67,7 +67,7 @@ func (p *quicTransportClient) connect(ctx context.Context) (*quicConn, error) {
 	if p.outbound.Type == "brook" {
 		options.initial = 1300
 	}
-	return dialQUIC(ctx, p.runtime.ctx, raw, cfg, options)
+	return dialQUIC(ctx, p.runtime.ctx, raw, cfg, p.outbound.QUICReceiveWindows.apply(options))
 }
 
 func (p *quicTransportClient) session(ctx context.Context) (*quicConn, error) {

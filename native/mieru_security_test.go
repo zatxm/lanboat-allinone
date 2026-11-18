@@ -398,7 +398,7 @@ func TestMieruWriteDeadlineIsolatesFlows(t *testing.T) {
 			if _, e = a.Write([]byte("expired")); !errors.Is(e, os.ErrDeadlineExceeded) {
 				t.Fatal(e)
 			}
-			flow := a.(*ownedConn).Conn.(*mieruFlow)
+			flow := withoutConnectionLog(a).(*ownedConn).Conn.(*mieruFlow)
 			flow.m.gate <- struct{}{}
 			a.SetWriteDeadline(time.Now().Add(20 * time.Millisecond))
 			_, e = a.Write([]byte("queued"))

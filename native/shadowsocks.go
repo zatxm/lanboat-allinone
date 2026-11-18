@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/hkdf"
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/sha1"
@@ -13,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"sync"
 	"time"
 )
@@ -103,10 +103,9 @@ func (k *ssKey) aead(salt []byte) (cipher.AEAD, error) {
 	if isSS2022(k.method) {
 		return k.ss2022AEAD(salt)
 	}
-	key, err := hkdf.Key(sha1.New, k.master, salt, "ss-subkey", len(k.master))
-	if err != nil {
-		return nil, err
-	}
+	var subkey [32]byte
+	key := ssSubkey(subkey[:len(k.master)], k.master, salt)
+	defer clear(subkey[:])
 	if k.method == "chacha20-ietf-poly1305" || k.method == "chacha20-poly1305" || k.method == "xchacha20-ietf-poly1305" {
 		return newChaChaAEAD(key, k.method == "xchacha20-ietf-poly1305")
 	}
@@ -115,6 +114,37 @@ func (k *ssKey) aead(salt []byte) (cipher.AEAD, error) {
 		return nil, err
 	}
 	return cipher.NewGCM(block)
+}
+
+// ssHMACSHA1 computes HMAC-SHA1 for keys up to one block without heap allocation.
+func ssHMACSHA1(key []byte, message ...[]byte) [sha1.Size]byte {
+	var pad [sha1.BlockSize + 64]byte
+	copy(pad[:sha1.BlockSize], key)
+	for i := range sha1.BlockSize {
+		pad[i] ^= 0x36
+	}
+	inner := pad[:sha1.BlockSize]
+	for _, m := range message {
+		inner = append(inner, m...)
+	}
+	sum := sha1.Sum(inner)
+	for i := range sha1.BlockSize {
+		pad[i] ^= 0x36 ^ 0x5c
+	}
+	return sha1.Sum(append(pad[:sha1.BlockSize], sum[:]...))
+}
+
+// ssSubkey is HKDF-SHA1(master, salt, "ss-subkey") for the AEAD key sizes
+// (at most 32 bytes); this runs for every UDP packet.
+func ssSubkey(dst, master, salt []byte) []byte {
+	prk := ssHMACSHA1(salt, master)
+	t := ssHMACSHA1(prk[:], []byte("ss-subkey\x01"))
+	n := copy(dst, t[:])
+	if n < len(dst) {
+		t = ssHMACSHA1(prk[:], t[:], []byte("ss-subkey\x02"))
+		copy(dst[n:], t[:])
+	}
+	return dst
 }
 
 type replayWindow struct {
@@ -158,15 +188,33 @@ func (w *replayWindow) claimFor(id string, duration time.Duration) error {
 
 type ssConn struct {
 	net.Conn
-	key                     *ssKey
-	replay                  *replayWindow
-	readMu, writeMu         sync.Mutex
-	reader, writer          cipher.AEAD
-	readNonce, writeNonce   [24]byte
-	readBuffer, writeBuffer []byte
-	pending                 []byte
-	readErr, writeErr       error
-	lineSalt                bool
+	key                   *ssKey
+	replay                *replayWindow
+	readMu, writeMu       sync.Mutex
+	reader, writer        cipher.AEAD
+	readNonce, writeNonce [24]byte
+	// readLength and writeLength are chunk length scratch guarded by
+	// readMu and writeMu; locals would escape through the AEAD interface.
+	readLength  [18]byte
+	writeLength [2]byte
+	// readBuffer is borrowed only while undelivered plaintext remains, so idle
+	// connections hold no chunk buffers.
+	readBuffer        *[ssChunkBuffer]byte
+	pending           []byte
+	readErr, writeErr error
+	lineSalt          bool
+}
+
+// ssChunkBuffer fits one sealed length and payload chunk.
+const ssChunkBuffer = 2 + 16 + 0x3fff + 16
+
+var ssBuffers = sync.Pool{New: func() any { return new([ssChunkBuffer]byte) }}
+
+func (c *ssConn) releaseRead() {
+	if c.readBuffer != nil && len(c.pending) == 0 {
+		ssBuffers.Put(c.readBuffer)
+		c.readBuffer, c.pending = nil, nil
+	}
 }
 
 func newSSConn(c net.Conn, key *ssKey, replay *replayWindow) net.Conn {
@@ -207,7 +255,6 @@ func (c *ssConn) initWrite() error {
 		return err
 	}
 	c.writer = aead
-	c.writeBuffer = make([]byte, 0, 0x3fff+34)
 	return nil
 }
 
@@ -226,12 +273,14 @@ func (c *ssConn) Write(b []byte) (int, error) {
 			return 0, err
 		}
 	}
+	buffer := ssBuffers.Get().(*[ssChunkBuffer]byte)
+	defer ssBuffers.Put(buffer)
 	written := 0
 	for len(b) > 0 {
 		size := min(len(b), 0x3fff)
-		var length [2]byte
-		binary.BigEndian.PutUint16(length[:], uint16(size))
-		frame := c.writer.Seal(c.writeBuffer[:0], c.writeNonce[:c.writer.NonceSize()], length[:], nil)
+		length := c.writeLength[:]
+		binary.BigEndian.PutUint16(length, uint16(size))
+		frame := c.writer.Seal(buffer[:0], c.writeNonce[:c.writer.NonceSize()], length, nil)
 		incrementNonce(&c.writeNonce)
 		frame = c.writer.Seal(frame, c.writeNonce[:c.writer.NonceSize()], b[:size], nil)
 		incrementNonce(&c.writeNonce)
@@ -257,6 +306,7 @@ func (c *ssConn) Read(b []byte) (int, error) {
 	if len(c.pending) != 0 {
 		n := copy(b, c.pending)
 		c.pending = c.pending[n:]
+		c.releaseRead()
 		return n, nil
 	}
 	var salt []byte
@@ -272,14 +322,15 @@ func (c *ssConn) Read(b []byte) (int, error) {
 			c.readErr = err
 			return 0, err
 		}
-		c.readBuffer = make([]byte, 0x3fff+16)
 	}
 	for empty := 0; empty < 16; empty++ {
-		var encryptedLength [18]byte
-		_, err := io.ReadFull(c.Conn, encryptedLength[:])
+		// Do not hold a chunk buffer while waiting for the peer.
+		c.releaseRead()
+		encryptedLength := c.readLength[:]
+		_, err := io.ReadFull(c.Conn, encryptedLength)
 		var length []byte
 		if err == nil {
-			length, err = c.reader.Open(encryptedLength[:0], c.readNonce[:c.reader.NonceSize()], encryptedLength[:], nil)
+			length, err = c.reader.Open(encryptedLength[:0], c.readNonce[:c.reader.NonceSize()], encryptedLength, nil)
 			incrementNonce(&c.readNonce)
 		}
 		if err == nil && salt != nil {
@@ -295,6 +346,9 @@ func (c *ssConn) Read(b []byte) (int, error) {
 			c.readErr = errors.New("invalid Shadowsocks chunk size")
 			return 0, c.readErr
 		}
+		if c.readBuffer == nil {
+			c.readBuffer = ssBuffers.Get().(*[ssChunkBuffer]byte)
+		}
 		frame := c.readBuffer[:size+16]
 		if _, err := io.ReadFull(c.Conn, frame); err != nil {
 			c.readErr = err
@@ -309,6 +363,7 @@ func (c *ssConn) Read(b []byte) (int, error) {
 		if len(c.pending) != 0 {
 			n := copy(b, c.pending)
 			c.pending = c.pending[n:]
+			c.releaseRead()
 			return n, nil
 		}
 	}
@@ -323,11 +378,31 @@ func (c *ssConn) CloseWrite() error {
 	return nil
 }
 
+// AEAD UDP packets use a fresh subkey each, so the nonce is always zero.
+var ssZeroNonce [24]byte
+
 func (k *ssKey) sealPacket(payload []byte, replay *replayWindow) ([]byte, error) {
+	return k.appendSealPacket(nil, nil, payload, replay)
+}
+
+// appendSealPacket appends the encrypted packet for header||payload to dst,
+// sealing in place so a caller-provided buffer avoids per-packet allocation.
+func (k *ssKey) appendSealPacket(dst, header, payload []byte, replay *replayWindow) ([]byte, error) {
 	if _, _, stream := ssStreamParameters(k.method); stream {
-		return k.sealStreamPacket(payload)
+		plain := payload
+		if len(header) > 0 {
+			plain = append(append(make([]byte, 0, len(header)+len(payload)), header...), payload...)
+		}
+		packet, err := k.sealStreamPacket(plain)
+		if err != nil || dst == nil {
+			return packet, err
+		}
+		return append(dst, packet...), nil
 	}
-	salt := make([]byte, len(k.master))
+	dst = slices.Grow(dst, len(k.master)+len(header)+len(payload)+16)
+	start := len(dst)
+	dst = dst[:start+len(k.master)]
+	salt := dst[start:]
 	if _, err := rand.Read(salt); err != nil {
 		return nil, err
 	}
@@ -338,9 +413,11 @@ func (k *ssKey) sealPacket(payload []byte, replay *replayWindow) ([]byte, error)
 	if err != nil {
 		return nil, err
 	}
-	return aead.Seal(salt, make([]byte, aead.NonceSize()), payload, nil), nil
+	plain := append(append(dst, header...), payload...)[len(dst):]
+	return aead.Seal(dst, ssZeroNonce[:aead.NonceSize()], plain, nil), nil
 }
 
+// openPacket decrypts in place; packet's payload bytes are overwritten.
 func (k *ssKey) openPacket(packet []byte, replay *replayWindow) ([]byte, error) {
 	if _, _, stream := ssStreamParameters(k.method); stream {
 		return k.openStreamPacket(packet)
@@ -353,7 +430,8 @@ func (k *ssKey) openPacket(packet []byte, replay *replayWindow) ([]byte, error) 
 	if err != nil {
 		return nil, err
 	}
-	plain, err := aead.Open(nil, make([]byte, aead.NonceSize()), packet[len(salt):], nil)
+	body := packet[len(salt):]
+	plain, err := aead.Open(body[:0], ssZeroNonce[:aead.NonceSize()], body, nil)
 	if err != nil {
 		return nil, err
 	}

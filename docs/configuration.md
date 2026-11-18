@@ -32,6 +32,8 @@
 
 连接日志主要用于记录协议、目标地址、出站和错误；HTTPS通常只能识别目标主机，不能读取加密的网页路径或请求正文。诊断日志可能包含目标域名、IP等信息，分享前请脱敏。
 
+日志为每行一条JSON，`time`为ISO8601时间。连接日志的`msg`固定为`inbound connection`、`outbound connection`、`connection failed`，`debug`级别另有`connection closed`（含`upload`、`download`字节数），变化内容都在字段中：同一连接的各条日志共享`connection_id`，`elapsed_ms`为从入站接受起的毫秒数，`rule`为命中的路由规则（未命中为`final`）。Clash API的`/logs`以`[连接ID 耗时] 消息: 网络 入站 来源 → 目标 via 出站`的文本形式输出这些连接日志。
+
 ## 文件与持久化
 
 配置、证书、私钥、规则集和日志的相对路径以程序启动时的工作目录为基准。跨目录运行时建议使用绝对路径。程序不会默认把所有数据写入某个固定主目录。

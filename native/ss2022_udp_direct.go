@@ -21,7 +21,7 @@ type ss2022Direct struct {
 func (r *Runtime) ss2022SendDirect(s *ss2022ServerSession, o Outbound, q request, data []byte, replies net.PacketConn, workers *sync.WaitGroup, count *int) (resultErr error) {
 	defer func() {
 		if resultErr != nil {
-			r.logConnection(q, o.Tag, nil, resultErr)
+			r.logConnection(q, o.Tag, nil, resultErr, false)
 		}
 	}()
 	ctx, cancel := context.WithTimeout(r.ctx, handshakeTimeout)
@@ -123,7 +123,7 @@ func (r *Runtime) ss2022SendDirect(s *ss2022ServerSession, o Outbound, q request
 	s.mu.Unlock()
 	if fresh {
 		r.logInbound(&q)
-		r.logConnection(q, o.Tag, nil, nil)
+		r.logConnection(q, o.Tag, nil, nil, false)
 	}
 	n, err := d.conn.WriteTo(data, net.UDPAddrFromAddrPort(target))
 	r.up.Add(int64(n))

@@ -42,7 +42,7 @@ func (e *xHTTPEntry) h3Session(ctx context.Context) (*quicConn, error) {
 	if period == 0 {
 		period = 10
 	}
-	q, err := dialQUIC(ctx, p.r.ctx, raw, cfg, quicOptions{keepAlive: time.Duration(period) * time.Second})
+	q, err := dialQUIC(ctx, p.r.ctx, raw, cfg, p.o.QUICReceiveWindows.apply(quicOptions{keepAlive: time.Duration(period) * time.Second}))
 	if err != nil {
 		raw.Close()
 		return nil, err

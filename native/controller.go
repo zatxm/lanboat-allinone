@@ -96,9 +96,12 @@ type controller struct {
 	history                                      map[string]*controllerHistory
 	historyOrder                                 []string
 	logs                                         map[chan controllerLog]struct{}
-	logReaders                                   atomic.Int32
-	probes                                       chan struct{}
-	logLevel                                     zapcore.Level
+	// logMu guards logs separately from mu so broadcasting log entries does
+	// not contend with per-connection tracking.
+	logMu      sync.Mutex
+	logReaders atomic.Int32
+	probes     chan struct{}
+	logLevel   zapcore.Level
 }
 
 func newController(r *Runtime, o ControllerOptions) *controller {
@@ -483,11 +486,12 @@ func (c *controller) stream(w http.ResponseWriter, req *http.Request, path strin
 	}
 	if path == "/logs" {
 		ch := make(chan controllerLog, 256)
-		c.mu.Lock()
+		c.logMu.Lock()
 		c.logs[ch] = struct{}{}
 		c.logReaders.Add(1)
-		c.mu.Unlock()
-		defer func() { c.mu.Lock(); delete(c.logs, ch); c.logReaders.Add(-1); c.mu.Unlock() }()
+		c.logMu.Unlock()
+		defer func() { c.logMu.Lock(); delete(c.logs, ch); c.logReaders.Add(-1); c.logMu.Unlock() }()
+		structured := req.URL.Query().Get("format") == "structured"
 		if !ws {
 			response := http.NewResponseController(w)
 			_ = response.SetWriteDeadline(time.Now().Add(10 * time.Second))
@@ -504,7 +508,7 @@ func (c *controller) stream(w http.ResponseWriter, req *http.Request, path strin
 					continue
 				}
 				var v any = map[string]any{"type": entry.levelName(), "payload": entry.message}
-				if req.URL.Query().Get("format") == "structured" {
+				if structured {
 					v = map[string]any{"time": entry.at.Format("15:04:05"), "level": entry.level.String(), "message": entry.message, "fields": []any{}}
 				}
 				if write(v) != nil {
@@ -565,8 +569,8 @@ func (l *controllerLogCore) Check(e zapcore.Entry, check *zapcore.CheckedEntry) 
 	return check
 }
 func (l *controllerLogCore) Sync() error { return nil }
-func (l *controllerLogCore) Write(e zapcore.Entry, _ []zapcore.Field) error {
-	message := e.Message
+func (l *controllerLogCore) Write(e zapcore.Entry, fields []zapcore.Field) error {
+	message := logText(e.Message, fields)
 	if len(message) > 4096 {
 		message = message[:4096]
 	}
@@ -586,8 +590,8 @@ func (l *controllerLogCore) Write(e zapcore.Entry, _ []zapcore.Field) error {
 		message = plain.String()
 	}
 	entry := controllerLog{e.Time, e.Level, message}
-	l.c.mu.Lock()
-	defer l.c.mu.Unlock()
+	l.c.logMu.Lock()
+	defer l.c.logMu.Unlock()
 	for ch := range l.c.logs {
 		select {
 		case ch <- entry:

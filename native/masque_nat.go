@@ -319,7 +319,7 @@ func (s *masqueNATScope) send(q request, data []byte, reply func([]byte, string)
 func (e *masqueNATEntry) open(ctx context.Context, q request, tag string, target netip.AddrPort, direct, multi bool, groups []masqueNATGroup) {
 	n := e.table
 	n.runtime.logInbound(&q)
-	defer func() { n.runtime.logConnection(q, tag, e.conn, e.err) }()
+	defer func() { n.runtime.logConnection(q, tag, e.conn, e.err, false) }()
 	dial, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(e.ctx, cancel)
 	if direct {

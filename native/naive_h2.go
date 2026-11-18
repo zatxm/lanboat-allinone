@@ -239,7 +239,7 @@ func (m *naiveH2Session) writeLoop() {
 
 func (m *naiveH2Session) finishOperation(op *naiveH2Operation, err error) {
 	if op.pooled {
-		buffers.Put(op.wire[:32*1024])
+		buffers.Put((*[32 * 1024]byte)(op.wire[:32*1024]))
 	}
 	if op.result != nil {
 		op.result <- err

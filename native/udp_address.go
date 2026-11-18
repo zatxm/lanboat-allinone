@@ -17,6 +17,11 @@ func udpCarrier(c net.Conn) addressedUDP {
 				return &controllerUDP{owner: v, inner: p}
 			}
 			return nil
+		case *connectionLogConn:
+			if p := udpCarrier(v.Conn); p != nil {
+				return &connectionLogUDP{owner: v, inner: p}
+			}
+			return nil
 		case *ownedConn:
 			c = v.Conn
 		case *groupConn:

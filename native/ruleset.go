@@ -113,8 +113,9 @@ func (s *ruleCollection) store(snapshot *ruleSnapshot) {
 	s.current.Store(snapshot)
 }
 
-func (s *ruleCollection) matches(q request) bool { return s.evaluate(q) == matchYes }
-func (s *ruleCollection) evaluate(q request) routeMatch {
+func (s *ruleCollection) matches(q request) bool        { return s.eval(&q) == matchYes }
+func (s *ruleCollection) evaluate(q request) routeMatch { return s.eval(&q) }
+func (s *ruleCollection) eval(q *request) routeMatch {
 	snapshot := s.current.Load()
 	if snapshot == nil {
 		return matchNo
@@ -122,7 +123,7 @@ func (s *ruleCollection) evaluate(q request) routeMatch {
 	result := matchNo
 	for i := range snapshot.rules {
 		rule := &snapshot.rules[i]
-		m := rule.evaluate(q)
+		m := rule.eval(q)
 		if m == matchYes {
 			return matchYes
 		}

@@ -62,24 +62,47 @@ func parseTunPacket(data []byte) (tunPacket, error) {
 	}
 	return p, nil
 }
+
+// checksum is the Internet checksum. Summing 32-bit big-endian words and
+// folding the carries yields the same ones' complement sum as 16-bit words.
 func checksum(data []byte, initial uint32) uint16 {
-	sum := initial
+	sum := uint64(initial)
+	for len(data) >= 8 {
+		v := binary.BigEndian.Uint64(data)
+		sum += v>>32 + v&0xffffffff
+		data = data[8:]
+	}
 	for len(data) >= 2 {
-		sum += uint32(binary.BigEndian.Uint16(data))
+		sum += uint64(binary.BigEndian.Uint16(data))
 		data = data[2:]
 	}
 	if len(data) > 0 {
-		sum += uint32(data[0]) << 8
+		sum += uint64(data[0]) << 8
 	}
 	for sum>>16 != 0 {
 		sum = (sum & 65535) + (sum >> 16)
 	}
 	return ^uint16(sum)
 }
+
+// addrBytes returns the AsSlice representation of a without allocating.
+func addrBytes(a netip.Addr) ([16]byte, int) {
+	if a.Is4() {
+		var b [16]byte
+		v := a.As4()
+		copy(b[:], v[:])
+		return b, 4
+	}
+	if a.IsValid() {
+		return a.As16(), 16
+	}
+	return [16]byte{}, 0
+}
 func transportChecksum(p tunPacket, segment []byte) uint16 {
-	source, dest := p.source.AsSlice(), p.destination.AsSlice()
+	source, n := addrBytes(p.source)
+	dest, _ := addrBytes(p.destination)
 	sum := uint32(p.protocol) + uint32(len(segment)&65535) + uint32(len(segment)>>16)
-	for i := 0; i < len(source); i += 2 {
+	for i := 0; i < n; i += 2 {
 		sum += uint32(binary.BigEndian.Uint16(source[i:])) + uint32(binary.BigEndian.Uint16(dest[i:]))
 	}
 	return checksum(segment, sum)
@@ -88,14 +111,16 @@ func updateTunPacket(p tunPacket, source, destination netip.Addr, sport, dport u
 	segment := p.data[p.header:]
 	binary.BigEndian.PutUint16(segment, sport)
 	binary.BigEndian.PutUint16(segment[2:], dport)
+	s, sn := addrBytes(source)
+	d, dn := addrBytes(destination)
 	if source.Is4() {
-		copy(p.data[12:16], source.AsSlice())
-		copy(p.data[16:20], destination.AsSlice())
+		copy(p.data[12:16], s[:sn])
+		copy(p.data[16:20], d[:dn])
 		clear(p.data[10:12])
 		binary.BigEndian.PutUint16(p.data[10:12], checksum(p.data[:p.header], 0))
 	} else {
-		copy(p.data[8:24], source.AsSlice())
-		copy(p.data[24:40], destination.AsSlice())
+		copy(p.data[8:24], s[:sn])
+		copy(p.data[24:40], d[:dn])
 	}
 	p.source, p.destination = source, destination
 	offset := 16

@@ -434,6 +434,25 @@ type websocketConn struct {
 	closeErr        error
 	closePong       chan struct{}
 	closeToken      [8]byte
+	// readHeader is per-frame scratch guarded by readMu; a local array would
+	// escape through io.ReadFull.
+	readHeader [8]byte
+}
+
+// wsMask XORs b with the WebSocket mask, starting at mask position offset.
+func wsMask(b []byte, mask [4]byte, offset int) {
+	var m [8]byte
+	for i := range m {
+		m[i] = mask[(offset+i)&3]
+	}
+	word := binary.LittleEndian.Uint64(m[:])
+	for len(b) >= 8 {
+		binary.LittleEndian.PutUint64(b, binary.LittleEndian.Uint64(b)^word)
+		b = b[8:]
+	}
+	for i := range b {
+		b[i] ^= m[i]
+	}
 }
 
 func (c *websocketConn) Read(p []byte) (int, error) {
@@ -468,8 +487,8 @@ func (c *websocketConn) readPayload(p []byte) (int, error) {
 	c.readMu.Lock()
 	defer c.readMu.Unlock()
 	for c.remaining == 0 {
-		var header [2]byte
-		if _, err := io.ReadFull(c.Conn, header[:]); err != nil {
+		header := c.readHeader[:2]
+		if _, err := io.ReadFull(c.Conn, header); err != nil {
 			return 0, err
 		}
 		fin, opcode := header[0]&128 != 0, header[0]&15
@@ -482,20 +501,20 @@ func (c *websocketConn) readPayload(p []byte) (int, error) {
 		}
 		size := uint64(header[1] & 127)
 		if size == 126 {
-			var extended [2]byte
-			if _, err := io.ReadFull(c.Conn, extended[:]); err != nil {
+			extended := c.readHeader[:2]
+			if _, err := io.ReadFull(c.Conn, extended); err != nil {
 				return 0, err
 			}
-			size = uint64(binary.BigEndian.Uint16(extended[:]))
+			size = uint64(binary.BigEndian.Uint16(extended))
 			if size < 126 {
 				return 0, errors.New("noncanonical WebSocket size")
 			}
 		} else if size == 127 {
-			var extended [8]byte
-			if _, err := io.ReadFull(c.Conn, extended[:]); err != nil {
+			extended := c.readHeader[:8]
+			if _, err := io.ReadFull(c.Conn, extended); err != nil {
 				return 0, err
 			}
-			size = binary.BigEndian.Uint64(extended[:])
+			size = binary.BigEndian.Uint64(extended)
 			if size < 65536 {
 				return 0, errors.New("noncanonical WebSocket size")
 			}
@@ -519,9 +538,7 @@ func (c *websocketConn) readPayload(p []byte) (int, error) {
 				return 0, err
 			}
 			if masked {
-				for i := range data {
-					data[i] ^= c.mask[i&3]
-				}
+				wsMask(data, c.mask, 0)
 			}
 			switch opcode {
 			case 8:
@@ -559,9 +576,7 @@ func (c *websocketConn) readPayload(p []byte) (int, error) {
 	}
 	n, err := c.Conn.Read(p[:min(uint64(len(p)), c.remaining)])
 	if c.masked {
-		for i := range n {
-			p[i] ^= c.mask[(c.maskOffset+i)&3]
-		}
+		wsMask(p[:n], c.mask, c.maskOffset)
 		c.maskOffset = (c.maskOffset + n) & 3
 	}
 	c.remaining -= uint64(n)
@@ -579,43 +594,37 @@ func (c *websocketConn) writeFrame(opcode byte, data []byte) error {
 			return io.ErrClosedPipe
 		}
 	}
-	header := []byte{128 | opcode}
+	// Header and payload go out in one write: one syscall, and one record
+	// when the transport is TLS.
+	owner := buffers.Get().(*[32 * 1024]byte)
+	defer buffers.Put(owner)
+	packet := append(owner[:0], 128|opcode)
 	maskBit := byte(0)
 	if c.client {
 		maskBit = 128
 	}
 	if len(data) < 126 {
-		header = append(header, maskBit|byte(len(data)))
+		packet = append(packet, maskBit|byte(len(data)))
 	} else if len(data) < 65536 {
-		header = append(header, maskBit|126)
-		header = binary.BigEndian.AppendUint16(header, uint16(len(data)))
+		packet = append(packet, maskBit|126)
+		packet = binary.BigEndian.AppendUint16(packet, uint16(len(data)))
 	} else {
-		header = append(header, maskBit|127)
-		header = binary.BigEndian.AppendUint64(header, uint64(len(data)))
+		packet = append(packet, maskBit|127)
+		packet = binary.BigEndian.AppendUint64(packet, uint64(len(data)))
 	}
+	var mask [4]byte
 	if c.client {
-		var mask [4]byte
 		if _, err := rand.Read(mask[:]); err != nil {
 			return err
 		}
-		header = append(header, mask[:]...)
-		buffer := buffers.Get().([]byte)
-		defer buffers.Put(buffer)
-		packet := append(buffer[:0], header...)
-		packet = append(packet, data...)
-		for i := range data {
-			packet[len(header)+i] ^= mask[i&3]
-		}
-		err := writeAll(c.Conn, packet)
-		if err == nil && opcode == 8 {
-			c.writeClosed = true
-		}
-		return err
+		packet = append(packet, mask[:]...)
 	}
-	if err := writeAll(c.Conn, header); err != nil {
-		return err
+	header := len(packet)
+	packet = append(packet, data...)
+	if c.client {
+		wsMask(packet[header:], mask, 0)
 	}
-	err := writeAll(c.Conn, data)
+	err := writeAll(c.Conn, packet)
 	if err == nil && opcode == 8 {
 		c.writeClosed = true
 	}

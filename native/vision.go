@@ -243,6 +243,8 @@ func visionTransport(c net.Conn) (*visionRecordConn, error) {
 			c = v.Conn
 		case *controllerWireConn:
 			c = v.Conn
+		case *connectionLogConn:
+			c = v.Conn
 		case *ownedConn:
 			c = v.Conn
 		case *tls.Conn:

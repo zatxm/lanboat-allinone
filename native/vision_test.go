@@ -56,7 +56,7 @@ func visionHTTPS(t *testing.T, c *Runtime, version uint16, requireDirect bool, p
 	tr := &http.Transport{DisableKeepAlives: true, TLSClientConfig: &tls.Config{MinVersion: version, MaxVersion: version, InsecureSkipVerify: true}, DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 		conn, e := c.Dial(ctx, network, address)
 		if e == nil {
-			if own, ok := conn.(*ownedConn); ok {
+			if own, ok := withoutConnectionLog(conn).(*ownedConn); ok {
 				if v, ok := own.Conn.(*visionConn); ok {
 					mu.Lock()
 					connections = append(connections, v)

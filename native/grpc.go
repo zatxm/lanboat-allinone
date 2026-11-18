@@ -1,7 +1,6 @@
 package native
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -16,7 +15,23 @@ type grpcConn struct {
 	readMu, writeMu sync.Mutex
 	pending         []byte
 	frame           []byte
-	status          func() string
+	// header is envelope scratch guarded by readMu; a local would escape.
+	header [5]byte
+	status func() string
+}
+
+var errGRPCVarint = errors.New("binary: varint overflows a 64-bit integer")
+
+// grpcUvarint decodes a varint with binary.ReadUvarint's errors, without a reader.
+func grpcUvarint(b []byte) (uint64, int, error) {
+	v, n := binary.Uvarint(b)
+	if n == 0 {
+		return 0, 0, io.ErrUnexpectedEOF
+	}
+	if n < 0 {
+		return 0, 0, errGRPCVarint
+	}
+	return v, n, nil
 }
 
 func (c *grpcConn) Read(p []byte) (int, error) {
@@ -26,8 +41,8 @@ func (c *grpcConn) Read(p []byte) (int, error) {
 	c.readMu.Lock()
 	defer c.readMu.Unlock()
 	for len(c.pending) == 0 {
-		var header [5]byte
-		if _, err := io.ReadFull(c.Conn, header[:]); err != nil {
+		header := c.header[:]
+		if _, err := io.ReadFull(c.Conn, header); err != nil {
 			if err == io.EOF && c.status != nil {
 				if status := c.status(); status != "0" {
 					return 0, fmt.Errorf("gRPC stream ended with status %q", status)
@@ -49,22 +64,23 @@ func (c *grpcConn) Read(p []byte) (int, error) {
 		if _, err := io.ReadFull(c.Conn, message); err != nil {
 			return 0, err
 		}
-		reader := bytes.NewReader(message)
-		for reader.Len() > 0 {
-			tag, err := binary.ReadUvarint(reader)
+		rest := message
+		for len(rest) > 0 {
+			tag, n, err := grpcUvarint(rest)
 			if err != nil {
 				return 0, err
 			}
 			if tag != 10 {
 				return 0, errors.New("invalid gRPC Hunk field")
 			}
-			length, err := binary.ReadUvarint(reader)
-			if err != nil || length > uint64(reader.Len()) {
+			rest = rest[n:]
+			length, n, err := grpcUvarint(rest)
+			if err != nil || length > uint64(len(rest)-n) {
 				return 0, errors.New("invalid gRPC Hunk length")
 			}
-			start := len(message) - reader.Len()
-			c.pending = message[start : start+int(length)]
-			reader.Seek(int64(length), io.SeekCurrent)
+			rest = rest[n:]
+			c.pending = rest[:length]
+			rest = rest[length:]
 		}
 	}
 	n := copy(p, c.pending)
@@ -75,8 +91,9 @@ func (c *grpcConn) Write(p []byte) (int, error) {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 	written := 0
-	buffer := buffers.Get().([]byte)
-	defer buffers.Put(buffer)
+	owner := buffers.Get().(*[32 * 1024]byte)
+	defer buffers.Put(owner)
+	buffer := owner[:]
 	for len(p) > 0 {
 		n := min(len(p), len(buffer)-10)
 		packet := append(buffer[:0], 0, 0, 0, 0, 0, 10)

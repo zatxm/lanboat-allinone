@@ -204,3 +204,37 @@ func TestTUNICMPPolicy(t *testing.T) {
 }
 
 var _ io.ReadWriteCloser = (*packetMemory)(nil)
+
+func TestChecksumWideSum(t *testing.T) {
+	reference := func(data []byte, initial uint32) uint16 {
+		sum := initial
+		for len(data) >= 2 {
+			sum += uint32(data[0])<<8 | uint32(data[1])
+			data = data[2:]
+		}
+		if len(data) > 0 {
+			sum += uint32(data[0]) << 8
+		}
+		for sum>>16 != 0 {
+			sum = sum&65535 + sum>>16
+		}
+		return ^uint16(sum)
+	}
+	data := make([]byte, 1600)
+	for i := range data {
+		data[i] = byte(i*131 + i>>3)
+	}
+	for _, fill := range []func(int) byte{func(i int) byte { return data[i] }, func(int) byte { return 0xff }, func(int) byte { return 0 }} {
+		b := make([]byte, len(data))
+		for i := range b {
+			b[i] = fill(i)
+		}
+		for size := 0; size <= len(b); size += 1 + size/64 {
+			for _, initial := range []uint32{0, 17, 0x1fffe, 0xffffffff >> 4} {
+				if got, want := checksum(b[:size], initial), reference(b[:size], initial); got != want {
+					t.Fatalf("size %d initial %d: %#x != %#x", size, initial, got, want)
+				}
+			}
+		}
+	}
+}

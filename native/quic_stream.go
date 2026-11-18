@@ -17,6 +17,37 @@ import (
 type quicPiece struct {
 	offset uint64
 	data   []byte
+	// chunk is the pooled backing array of data, when it has one.
+	chunk *[quicChunkSize]byte
+}
+
+// A piece that keeps growing moves into a pooled chunk, so a reader that keeps
+// up reuses memory instead of regrowing a fresh slice for every burst. Short
+// one-off data stays in an exact allocation.
+const quicChunkSize = 32 << 10
+
+var quicChunks = sync.Pool{New: func() any { return new([quicChunkSize]byte) }}
+
+func (p *quicPiece) release() {
+	if p.chunk != nil {
+		quicChunks.Put(p.chunk)
+		p.chunk = nil
+	}
+}
+
+func (p *quicPiece) append(data []byte) {
+	if len(p.data)+len(data) > cap(p.data) && len(p.data)+len(data) <= quicChunkSize {
+		if p.chunk == nil {
+			p.chunk = quicChunks.Get().(*[quicChunkSize]byte)
+		}
+		// Reclaim the already-read prefix of the chunk.
+		p.data = p.chunk[:copy(p.chunk[:], p.data)]
+	}
+	grown := len(p.data)+len(data) > cap(p.data)
+	p.data = append(p.data, data...)
+	if grown {
+		p.release()
+	}
 }
 
 type quicStreamStopError struct{ code uint64 }
@@ -58,7 +89,7 @@ func (b *quicBuffer) put(offset uint64, data []byte) error {
 	if len(b.parts) > 0 {
 		p := &b.parts[len(b.parts)-1]
 		if p.offset+uint64(len(p.data)) == offset && len(p.data)+len(data) <= 256<<10 {
-			p.data = append(p.data, data...)
+			p.append(data)
 			return nil
 		}
 	}
@@ -74,7 +105,7 @@ func (b *quicBuffer) put(offset uint64, data []byte) error {
 		}
 		if cursor < part.offset {
 			n := min(part.offset, end)
-			pending = append(pending, quicPiece{cursor, append([]byte{}, data[cursor-offset:n-offset]...)})
+			pending = append(pending, quicPiece{offset: cursor, data: append([]byte{}, data[cursor-offset:n-offset]...)})
 			cursor = n
 		}
 		overlapEnd := min(stop, end)
@@ -86,7 +117,7 @@ func (b *quicBuffer) put(offset uint64, data []byte) error {
 		}
 	}
 	if cursor < end {
-		pending = append(pending, quicPiece{cursor, append([]byte{}, data[cursor-offset:]...)})
+		pending = append(pending, quicPiece{offset: cursor, data: append([]byte{}, data[cursor-offset:]...)})
 	}
 	b.parts = append(b.parts, pending...)
 	if len(b.parts) > 512 {
@@ -114,6 +145,7 @@ func (b *quicBuffer) read(dst []byte) int {
 		part.offset += uint64(k)
 		part.data = part.data[k:]
 		if len(part.data) == 0 {
+			part.release()
 			copy(b.parts, b.parts[1:])
 			b.parts[len(b.parts)-1] = quicPiece{}
 			b.parts = b.parts[:len(b.parts)-1]
@@ -235,6 +267,13 @@ func (s *quicStream) Read(b []byte) (int, error) {
 		}
 	}
 }
+
+// Write copies into a pooled buffer because a canceled operation may still be
+// read by the connection loop after Write returns.
+const quicWriteChunk = 16 << 10
+
+var quicWriteBuffers = sync.Pool{New: func() any { return new([quicWriteChunk]byte) }}
+
 func (s *quicStream) Write(b []byte) (int, error) {
 	if len(b) == 0 {
 		return 0, nil
@@ -243,13 +282,25 @@ func (s *quicStream) Write(b []byte) (int, error) {
 	defer s.wmu.Unlock()
 	written := 0
 	for len(b) > 0 {
-		n := min(len(b), 16<<10)
+		n := min(len(b), quicWriteChunk)
 		op := newQUICOperation('w', s)
-		op.data = append([]byte{}, b[:n]...)
+		// Small writes are cheaper as exact copies than as pooled chunks.
+		var owner *[quicWriteChunk]byte
+		if n > quicWriteChunk/8 {
+			owner = quicWriteBuffers.Get().(*[quicWriteChunk]byte)
+			op.data = owner[:copy(owner[:], b[:n])]
+		} else {
+			op.data = append([]byte(nil), b[:n]...)
+		}
 		result := s.conn.do(s.conn.ctx, op, s)
 		written += result.n
 		if result.err != nil {
+			// Leave the copy to the GC; the loop may not have dropped the operation yet.
 			return written, result.err
+		}
+		// A successful reply is sent only after the loop has copied all data.
+		if owner != nil {
+			quicWriteBuffers.Put(owner)
 		}
 		b = b[n:]
 	}
@@ -393,8 +444,17 @@ func (c *quicConn) SendDatagram(ctx context.Context, data []byte) error {
 	if len(data) > c.datagramLimit() {
 		return errQUICDatagramSize
 	}
+	return c.sendDatagramOwned(ctx, append([]byte{}, data...))
+}
+
+// sendDatagramOwned takes ownership of data; the caller must not reuse it,
+// because a canceled operation may still be read by the connection loop.
+func (c *quicConn) sendDatagramOwned(ctx context.Context, data []byte) error {
+	if len(data) > c.datagramLimit() {
+		return errQUICDatagramSize
+	}
 	op := newQUICOperation('d', nil)
-	op.data = append([]byte{}, data...)
+	op.data = data
 	return c.do(ctx, op, nil).err
 }
 func (c *quicConn) ReceiveDatagram(ctx context.Context) ([]byte, error) {

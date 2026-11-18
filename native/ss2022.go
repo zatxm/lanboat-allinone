@@ -184,15 +184,42 @@ func (c *ss2022Cipher) open(dst, encrypted []byte) ([]byte, error) {
 
 type ss2022Conn struct {
 	net.Conn
-	key                 *ssKey
-	requestSalt         []byte
-	readMu, writeMu     sync.Mutex
-	reader, writer      ss2022Cipher
-	readErr, writeErr   error
-	readBuffer, pending []byte
-	writeBuffer         []byte
-	readLength          [18]byte
-	writeLength         [2]byte
+	key               *ssKey
+	requestSalt       []byte
+	readMu, writeMu   sync.Mutex
+	reader, writer    ss2022Cipher
+	readErr, writeErr error
+	// readBuffer is borrowed from a size-class pool only while undelivered
+	// plaintext remains; readOwner is its pooled array.
+	readBuffer  []byte
+	readOwner   any
+	pending     []byte
+	readLength  [18]byte
+	writeLength [2]byte
+}
+
+const ss2022ChunkBuffer = 65535 + 16
+const ss2022SmallChunk = 4096
+
+// Writes up to the relay buffer size seal into a pooled buffer; larger ones allocate.
+const ss2022WriteBuffer = 32768 + 128
+
+var ss2022ReadBuffers = sync.Pool{New: func() any { return new([ss2022ChunkBuffer]byte) }}
+
+// ss2022SmallReadBuffers also serve small writes.
+var ss2022SmallReadBuffers = sync.Pool{New: func() any { return new([ss2022SmallChunk]byte) }}
+var ss2022WriteBuffers = sync.Pool{New: func() any { return new([ss2022WriteBuffer]byte) }}
+
+func (c *ss2022Conn) releaseRead() {
+	if c.readOwner != nil && len(c.pending) == 0 {
+		switch owner := c.readOwner.(type) {
+		case *[ss2022SmallChunk]byte:
+			ss2022SmallReadBuffers.Put(owner)
+		case *[ss2022ChunkBuffer]byte:
+			ss2022ReadBuffers.Put(owner)
+		}
+		c.readBuffer, c.readOwner, c.pending = nil, nil, nil
+	}
 }
 
 func (c *ss2022Conn) initWriter(salt []byte) error {
@@ -332,7 +359,14 @@ func readSS2022Header(raw net.Conn, k *ssKey, client bool, requestSalt []byte) (
 
 func (c *ss2022Conn) readChunk(length int) ([]byte, error) {
 	if cap(c.readBuffer) < length+16 {
-		c.readBuffer = make([]byte, length+16)
+		c.releaseRead()
+		if length+16 <= ss2022SmallChunk {
+			owner := ss2022SmallReadBuffers.Get().(*[ss2022SmallChunk]byte)
+			c.readBuffer, c.readOwner = owner[:], owner
+		} else {
+			owner := ss2022ReadBuffers.Get().(*[ss2022ChunkBuffer]byte)
+			c.readBuffer, c.readOwner = owner[:], owner
+		}
 	}
 	b := c.readBuffer[:length+16]
 	if _, err := io.ReadFull(c.Conn, b); err != nil {
@@ -356,13 +390,15 @@ func (c *ss2022Conn) Read(b []byte) (int, error) {
 			c.readErr = err
 			return 0, err
 		}
-		c.reader, c.readBuffer, c.pending = header.reader, header.readBuffer, header.pending
+		c.reader, c.readBuffer, c.readOwner, c.pending = header.reader, header.readBuffer, header.readOwner, header.pending
 	}
 	for empty := 0; len(c.pending) == 0; empty++ {
 		if empty == 16 {
 			c.readErr = errors.New("too many empty Shadowsocks2022 chunks")
 			return 0, c.readErr
 		}
+		// Do not hold a chunk buffer while waiting for the peer.
+		c.releaseRead()
 		_, err := io.ReadFull(c.Conn, c.readLength[:])
 		var length []byte
 		if err == nil {
@@ -378,6 +414,7 @@ func (c *ss2022Conn) Read(b []byte) (int, error) {
 	}
 	n := copy(b, c.pending)
 	c.pending = c.pending[n:]
+	c.releaseRead()
 	return n, nil
 }
 
@@ -404,10 +441,18 @@ func (c *ss2022Conn) Write(b []byte) (int, error) {
 }
 
 func (c *ss2022Conn) writeChunk(b []byte) error {
-	if cap(c.writeBuffer) < len(b)+128 {
-		c.writeBuffer = make([]byte, 0, max(32768+128, len(b)+128))
+	var packet []byte
+	if len(b)+128 <= ss2022SmallChunk {
+		buffer := ss2022SmallReadBuffers.Get().(*[ss2022SmallChunk]byte)
+		defer ss2022SmallReadBuffers.Put(buffer)
+		packet = buffer[:0]
+	} else if len(b)+128 <= ss2022WriteBuffer {
+		buffer := ss2022WriteBuffers.Get().(*[ss2022WriteBuffer]byte)
+		defer ss2022WriteBuffers.Put(buffer)
+		packet = buffer[:0]
+	} else {
+		packet = make([]byte, 0, len(b)+128)
 	}
-	packet := c.writeBuffer[:0]
 	var header []byte
 	if c.writer.AEAD == nil {
 		salt := make([]byte, len(c.key.master))

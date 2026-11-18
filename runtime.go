@@ -18,6 +18,19 @@ func RunNetworkNamespaceWorker(args []string) (bool, error) {
 	return native.RunNetworkNamespaceWorker(args)
 }
 
+type DNSLog = native.DNSLog
+type RequestLog = native.RequestLog
+type ConnectionLog = native.ConnectionLog
+type ConnectionEvent = native.ConnectionEvent
+
+const (
+	ConnectionOpened = native.ConnectionOpened
+	ConnectionFailed = native.ConnectionFailed
+	ConnectionClosed = native.ConnectionClosed
+)
+
+const RequestBodyLogLimit = native.RequestBodyLogLimit
+
 type Runtime = native.Runtime
 type TengoFunction = native.TengoFunction
 type TengoProgram = native.TengoProgram
@@ -91,3 +104,7 @@ func GenerateRealityKeyPair() (private, public string, err error) {
 func GenerateRealityMLDSA65KeyPair() (seed, public string, err error) {
 	return native.GenerateRealityMLDSA65KeyPair()
 }
+
+func DecodeRuleSet(data []byte) ([]byte, error) { return native.DecodeRuleSet(data) }
+
+func MatchRuleSet(data []byte, target string) (bool, error) { return native.MatchRuleSet(data, target) }

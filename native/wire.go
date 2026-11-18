@@ -27,6 +27,18 @@ func writeAll(w io.Writer, data []byte) error {
 }
 
 func encodeAddress(address string) ([]byte, error) {
+	return appendAddress(nil, address)
+}
+
+// validAddress reports whether address can be encoded, without allocating.
+func validAddress(address string) error {
+	var b [1 + 1 + 255 + 2]byte
+	_, err := appendAddress(b[:0], address)
+	return err
+}
+
+// appendAddress appends the SOCKS-style encoding of address to dst.
+func appendAddress(dst []byte, address string) ([]byte, error) {
 	host, portText, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, err
@@ -35,16 +47,17 @@ func encodeAddress(address string) ([]byte, error) {
 	if err != nil || port == 0 {
 		return nil, errors.New("destination port must be 1-65535")
 	}
-	var out []byte
 	if ip, err := netip.ParseAddr(host); err == nil {
 		ip = ip.Unmap()
 		if ip.Zone() != "" {
 			return nil, errors.New("scoped IPv6 cannot be encoded in a proxy address")
 		}
 		if ip.Is4() {
-			out = append([]byte{1}, ip.AsSlice()...)
+			a := ip.As4()
+			dst = append(append(dst, 1), a[:]...)
 		} else {
-			out = append([]byte{4}, ip.AsSlice()...)
+			a := ip.As16()
+			dst = append(append(dst, 4), a[:]...)
 		}
 	} else {
 		if len(host) == 0 || len(host) > 255 {
@@ -58,9 +71,9 @@ func encodeAddress(address string) ([]byte, error) {
 				return nil, errors.New("control byte in destination hostname")
 			}
 		}
-		out = append([]byte{3, byte(len(host))}, host...)
+		dst = append(append(dst, 3, byte(len(host))), host...)
 	}
-	return binary.BigEndian.AppendUint16(out, uint16(port)), nil
+	return binary.BigEndian.AppendUint16(dst, uint16(port)), nil
 }
 
 func readAddress(r io.Reader) (string, error) {

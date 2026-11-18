@@ -148,7 +148,7 @@ func (r *routeRule) compileMetadata() error {
 	}
 	return nil
 }
-func (r *routeRule) matchMetadata(q request) bool {
+func (r *routeRule) matchMetadata(q *request) bool {
 	o, m := &r.rule, &q.metadata
 	mode := m.ClashMode
 	if mode == "" {
@@ -168,7 +168,7 @@ func (r *routeRule) matchMetadata(q request) bool {
 			return false
 		}
 	}
-	if !matchNeighborRule(*o, *m) {
+	if !matchNeighborRule(o, m) {
 		return false
 	}
 	if len(o.UserID) > 0 && (m.UserID == nil || !slices.Contains(o.UserID, *m.UserID)) {

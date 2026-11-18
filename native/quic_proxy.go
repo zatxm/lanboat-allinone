@@ -105,7 +105,7 @@ func (p *quicProxyClient) session(ctx context.Context) (*quicProxySession, error
 	if p.outbound.Type == "hysteria" && p.outbound.Protocol == "faketcp" {
 		options.receiveMTU = 1200
 	}
-	c, e := dialQUIC(ctx, p.runtime.ctx, raw, cfg, options)
+	c, e := dialQUIC(ctx, p.runtime.ctx, raw, cfg, p.outbound.QUICReceiveWindows.apply(options))
 	if e != nil {
 		return nil, e
 	}
@@ -673,7 +673,8 @@ func (s *quicProxySession) handlePacketFlows(r *Runtime, in Inbound, flows *udpF
 		}
 		if _, ok := f.pieces[index]; !ok {
 			f.size += len(payload)
-			f.pieces[index] = append([]byte{}, payload...)
+			// payload belongs to a freshly allocated datagram, so keep it as is.
+			f.pieces[index] = payload
 		}
 		if f.size > 65507 {
 			delete(s.fragments, key)
@@ -695,8 +696,12 @@ func (s *quicProxySession) handlePacketFlows(r *Runtime, in Inbound, flows *udpF
 	s.mu.Unlock()
 	if r == nil {
 		if p != nil {
+			// Callers pass freshly allocated buffers, so payload can be handed off.
+			if payload == nil {
+				payload = []byte{}
+			}
 			select {
-			case p.incoming <- quicProxyDatagram{address: address, payload: append([]byte{}, payload...)}:
+			case p.incoming <- quicProxyDatagram{address: address, payload: payload}:
 			default:
 			}
 		}
@@ -792,12 +797,12 @@ func (s *quicProxySession) sendPacket(id uint32, address string, payload []byte,
 				return errors.New("invalid HY1 address")
 			}
 		} else if s.kind == "hysteria2" {
-			b = binary.BigEndian.AppendUint32(nil, id)
+			b = binary.BigEndian.AppendUint32(make([]byte, 0, 8+8+len(address)+end-start), id)
 			b = binary.BigEndian.AppendUint16(b, pid)
 			b = append(b, byte(i), byte(count))
 			b = quicString(b, address)
 		} else {
-			b = []byte{5, 2}
+			b = append(make([]byte, 0, 10+len(address)+4+end-start), 5, 2)
 			b = binary.BigEndian.AppendUint16(b, uint16(id))
 			b = binary.BigEndian.AppendUint16(b, pid)
 			b = append(b, byte(count), byte(i))
@@ -830,7 +835,8 @@ func (s *quicProxySession) sendPacket(id uint32, address string, payload []byte,
 				return e
 			}
 		} else {
-			if e := s.conn.SendDatagram(s.conn.ctx, b); e != nil {
+			// b is freshly built for this datagram, so the connection may own it.
+			if e := s.conn.sendDatagramOwned(s.conn.ctx, b); e != nil {
 				return e
 			}
 		}

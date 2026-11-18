@@ -141,7 +141,7 @@ func (r *routeRule) responseMatches(q request, state *dnsPolicyState) bool {
 		}
 		base := *r
 		base.rule.Invert = false
-		hit = hit && base.evaluateBase(q) == matchYes
+		hit = hit && base.evaluateBase(&q) == matchYes
 		if o.Invert {
 			hit = !hit
 		}
@@ -149,7 +149,17 @@ func (r *routeRule) responseMatches(q request, state *dnsPolicyState) bool {
 	}
 	return r.matches(q)
 }
-func (r *resolver) exchangePolicy(ctx context.Context, query []byte, real bool) ([]byte, error) {
+func (r *resolver) exchangePolicy(ctx context.Context, query []byte, real bool) (reply []byte, resultErr error) {
+	if r.runtime != nil && r.runtime.dnsLogger.Load() != nil {
+		started := time.Now()
+		defer func() {
+			if observer := r.runtime.dnsLogger.Load(); observer != nil {
+				// Callers may reuse these buffers once the exchange returns.
+				observer.push(DNSLog{Query: bytes.Clone(query), Response: bytes.Clone(reply), Duration: time.Since(started), Error: resultErr})
+			}
+		}()
+	}
+
 	host, end, typ, e := dnsQuestion(query)
 	if e != nil {
 		return nil, e

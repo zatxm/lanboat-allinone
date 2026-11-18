@@ -39,12 +39,13 @@ func (s *quicSpace) record(pn uint64) bool {
 	}
 	return true
 }
-func (s *quicSpace) ackFrame() []byte {
+func (s *quicSpace) ackFrame() []byte { return s.appendACKFrame(nil) }
+func (s *quicSpace) appendACKFrame(f []byte) []byte {
 	if len(s.received) == 0 {
-		return nil
+		return f
 	}
 	ranges := s.received
-	f := quicVar([]byte{2}, ranges[0].high)
+	f = quicVar(append(f, 2), ranges[0].high)
 	f = quicVar(f, 0)
 	f = quicVar(f, uint64(len(ranges)-1))
 	f = quicVar(f, ranges[0].high-ranges[0].low)
@@ -684,6 +685,24 @@ func (c *quicConn) onPTO(now time.Time) {
 	}
 }
 func (c *quicConn) flush(now time.Time) error {
+	err := c.flushPackets(now)
+	if c.batch != nil {
+		if e := c.batch.flush(); err == nil {
+			err = e
+		}
+	}
+	return err
+}
+
+// sendPacket sends one sealed packet, batching it when offload is enabled.
+func (c *quicConn) sendPacket(packet []byte) error {
+	if c.batch != nil {
+		return c.batch.add(packet)
+	}
+	return c.send(packet)
+}
+
+func (c *quicConn) flushPackets(now time.Time) error {
 	rate := c.sendRate.Load()
 	if target := c.brutalTarget.Load(); target != 0 {
 		if c.brutal == nil {
@@ -736,10 +755,10 @@ func (c *quicConn) flush(now time.Time) error {
 				space.queue[0] = quicFrame{}
 				space.queue = space.queue[1:]
 			}
-			var payload []byte
+			payload := c.payload[:0]
 			var frames []quicFrame
 			if space.ack {
-				payload = space.ackFrame()
+				payload = space.appendACKFrame(payload)
 				space.ack = false
 			}
 			// Keep application replies queued until the new port is validated;
@@ -784,8 +803,11 @@ func (c *quicConn) flush(now time.Time) error {
 					break
 				}
 			}
-			packet := sealQUICPacket(payload, c.dcid, c.cid, c.token, level, space.nextPN, c.phase, space.write, c.minInitial)
-			if err := c.send(packet); err != nil {
+			if cap(payload) <= quicScratchLimit {
+				c.payload = payload[:0]
+			}
+			packet := c.scratch.sealPacket(payload, c.dcid, c.cid, c.token, level, space.nextPN, c.phase, space.write, c.minInitial)
+			if err := c.sendPacket(packet); err != nil {
 				if level == 2 && c.pmtu != nil && quicMessageTooLarge(err) && c.sendMTU.Load() > 1200 {
 					// Never reuse a packet number after a failed OS send.
 					space.nextPN++

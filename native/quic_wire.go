@@ -19,7 +19,10 @@ import (
 const quicVersion = 1
 const quicVersion2 = 0x6b3343cf
 const quicMSS = 1200
-const quicStreamWindow = 256 << 10
+
+// The default stream window lets one stream reach about 1MiB per RTT while a
+// stalled stream can hold at most a quarter of the connection window.
+const quicStreamWindow = 1 << 20
 const quicConnWindow = 4 << 20
 
 type quicReader []byte
@@ -141,20 +144,51 @@ func (k *quicKey) next() (*quicKey, error) {
 	return n, err
 }
 func (k *quicKey) nonce(pn uint64) []byte {
-	iv := k.iv
+	var iv [12]byte
+	return k.nonceTo(&iv, pn)
+}
+func (k *quicKey) nonceTo(iv *[12]byte, pn uint64) []byte {
+	*iv = k.iv
 	v := binary.BigEndian.Uint64(iv[4:]) ^ pn
 	binary.BigEndian.PutUint64(iv[4:], v)
 	return iv[:]
 }
 func (k *quicKey) mask(sample []byte) [16]byte {
 	var out [16]byte
+	return k.maskTo(&out, sample)
+}
+func (k *quicKey) maskTo(out *[16]byte, sample []byte) [16]byte {
 	if k.hpChaCha != nil {
 		b := chachaBlock(k.hpChaCha, sample[4:16], binary.LittleEndian.Uint32(sample))
 		copy(out[:], b[:16])
 	} else {
 		k.hp.Encrypt(out[:], sample[:16])
 	}
-	return out
+	return *out
+}
+
+// quicScratchLimit bounds the packet buffers a connection keeps between packets.
+const quicScratchLimit = 4096
+
+// quicScratch holds reusable packet buffers for one QUIC connection. Interface
+// calls into cipher.AEAD/Block make stack buffers escape, so per-packet nonce,
+// mask and output storage live here instead. It is owned by the connection's
+// run goroutine; returned packets are valid only until the next seal/open.
+type quicScratch struct {
+	nonce      [12]byte
+	mask       [16]byte
+	seal, open []byte
+}
+
+func (s *quicScratch) buffer(owned *[]byte, size int) []byte {
+	if cap(*owned) >= size {
+		return (*owned)[:0]
+	}
+	b := make([]byte, 0, max(size, 2048))
+	if cap(b) <= quicScratchLimit {
+		*owned = b
+	}
+	return b
 }
 func quicInitialKeys(dcid []byte, server bool) (read, write *quicKey, err error) {
 	return quicInitialKeysVersion(dcid, server, quicVersion)
@@ -287,10 +321,15 @@ func quicPacketNumber(truncated uint64, n int, largest int64) uint64 {
 	return candidate
 }
 func openQUICPacket(b []byte, h quicHeader, k *quicKey, largest int64) ([]byte, uint64, byte, error) {
+	return new(quicScratch).openPacket(b, h, k, largest)
+}
+
+// openPacket leaves b unchanged so callers can retry other keys.
+func (s *quicScratch) openPacket(b []byte, h quicHeader, k *quicKey, largest int64) ([]byte, uint64, byte, error) {
 	if h.pnOffset+4+16 > h.end {
 		return nil, 0, 0, io.ErrUnexpectedEOF
 	}
-	mask := k.mask(b[h.pnOffset+4 : h.pnOffset+20])
+	mask := k.maskTo(&s.mask, b[h.pnOffset+4:h.pnOffset+20])
 	first := b[0]
 	bits := byte(0x1f)
 	if h.boolLong {
@@ -301,7 +340,9 @@ func openQUICPacket(b []byte, h quicHeader, k *quicKey, largest int64) ([]byte, 
 	if h.pnOffset+n+16 > h.end {
 		return nil, 0, 0, io.ErrUnexpectedEOF
 	}
-	header := append([]byte{}, b[:h.pnOffset+n]...)
+	headerLen := h.pnOffset + n
+	// The unprotected header is followed by the plaintext in the same buffer.
+	header := append(s.buffer(&s.open, h.end), b[:headerLen]...)
 	header[0] = first
 	var truncated uint64
 	for i := range n {
@@ -309,26 +350,34 @@ func openQUICPacket(b []byte, h quicHeader, k *quicKey, largest int64) ([]byte, 
 		truncated = truncated<<8 | uint64(header[h.pnOffset+i])
 	}
 	pn := quicPacketNumber(truncated, n, largest)
-	plain, err := k.aead.Open(nil, k.nonce(pn), b[h.pnOffset+n:h.end], header)
+	plain, err := k.aead.Open(header[headerLen:], k.nonceTo(&s.nonce, pn), b[headerLen:h.end], header)
 	if err == nil && (h.boolLong && first&12 != 0 || !h.boolLong && first&24 != 0) {
 		err = errors.New("QUIC reserved bits are nonzero")
 	}
 	return plain, pn, first, err
 }
 func sealQUICPacket(payload, dcid, scid, token []byte, level int, pn uint64, phase bool, k *quicKey, initial ...int) []byte {
+	return new(quicScratch).sealPacket(payload, dcid, scid, token, level, pn, phase, k, initial...)
+}
+func (s *quicScratch) sealPacket(payload, dcid, scid, token []byte, level int, pn uint64, phase bool, k *quicKey, initial ...int) []byte {
 	var header []byte
 	if level == 2 {
 		first := byte(0x43)
 		if phase {
 			first |= 4
 		}
-		header = append([]byte{first}, dcid...)
+		header = append(s.buffer(&s.seal, 1+len(dcid)+4+len(payload)+16), first)
+		header = append(header, dcid...)
 	} else {
 		first := byte(0xc3)
 		if level == 1 {
 			first = 0xe3
 		}
-		header = []byte{first, 0, 0, 0, 1, byte(len(dcid))}
+		size := 6 + len(dcid) + 1 + len(scid) + 8 + len(token) + 8 + 4 + max(len(payload), 1200) + 16
+		if len(initial) > 0 {
+			size = max(size, initial[0]+64)
+		}
+		header = append(s.buffer(&s.seal, size), first, 0, 0, 0, 1, byte(len(dcid)))
 		header = append(header, dcid...)
 		header = append(header, byte(len(scid)))
 		header = append(header, scid...)
@@ -349,8 +398,11 @@ func sealQUICPacket(payload, dcid, scid, token []byte, level int, pn uint64, pha
 	}
 	pnOffset := len(header)
 	header = binary.BigEndian.AppendUint32(header, uint32(pn))
-	out := k.aead.Seal(header, k.nonce(pn), payload, header)
-	mask := k.mask(out[pnOffset+4 : pnOffset+20])
+	out := k.aead.Seal(header, k.nonceTo(&s.nonce, pn), payload, header)
+	if cap(out) > cap(s.seal) && cap(out) <= quicScratchLimit {
+		s.seal = out[:0]
+	}
+	mask := k.maskTo(&s.mask, out[pnOffset+4:pnOffset+20])
 	bits := byte(0x1f)
 	if level != 2 {
 		bits = 15

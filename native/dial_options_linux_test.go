@@ -43,7 +43,7 @@ func TestDialOptionsLinuxTCP(t *testing.T) {
 			if conn.LocalAddr().(*net.TCPAddr).IP.String() != "127.0.0.2" {
 				t.Fatal("source binding ignored", conn.LocalAddr())
 			}
-			raw, err := conn.(*ownedConn).Conn.(*net.TCPConn).SyscallConn()
+			raw, err := withoutConnectionLog(conn).(*ownedConn).Conn.(*net.TCPConn).SyscallConn()
 			if err != nil {
 				t.Fatal(err)
 			}

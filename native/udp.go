@@ -138,8 +138,9 @@ func (c *socksUDPConn) writeEncoded(b, address []byte) (int, error) {
 	if len(b)+len(address)+3 > 65507 {
 		return 0, errors.New("SOCKS UDP packet is too large")
 	}
-	packet := append([]byte{0, 0, 0}, address...)
-	packet = append(packet, b...)
+	owner := packetBuffers.Get().([]byte)
+	defer packetBuffers.Put(owner)
+	packet := append(append(append(owner[:0], 0, 0, 0), address...), b...)
 	_, err := c.Conn.Write(packet)
 	if err != nil {
 		return 0, err
@@ -263,8 +264,9 @@ func (c *ssPacketConn) writeEncoded(b, address []byte) (int, error) {
 	if len(b)+len(address)+len(c.key.master)+16 > 65507 {
 		return 0, errors.New("Shadowsocks UDP packet is too large")
 	}
-	plain := append(append([]byte{}, address...), b...)
-	packet, err := c.key.sealPacket(plain, c.replay)
+	owner := packetBuffers.Get().([]byte)
+	defer packetBuffers.Put(owner)
+	packet, err := c.key.appendSealPacket(owner[:0], address, b, c.replay)
 	if err != nil {
 		return 0, err
 	}
@@ -396,7 +398,8 @@ func (f *udpFlows) send(key string, q request, payload []byte, reply func([]byte
 					}
 					f.mu.Unlock()
 				}()
-				buffer := make([]byte, 65535)
+				buffer := packetBuffers.Get().([]byte)
+				defer packetBuffers.Put(buffer)
 				for {
 					_ = c.SetReadDeadline(time.Now().Add(timeout))
 					n, err := c.Read(buffer)
@@ -422,6 +425,7 @@ func (r *Runtime) serveStreamPackets(c net.Conn, q request, trojan bool) error {
 	flows := newUDPFlows(r)
 	defer flows.Close()
 	var sendMu sync.Mutex
+	var buffer []byte
 	for {
 		address := q.address
 		var err error
@@ -440,12 +444,17 @@ func (r *Runtime) serveStreamPackets(c net.Conn, q request, trojan bool) error {
 				return err
 			}
 		}
-		payload := make([]byte, int(binary.BigEndian.Uint16(size[:])))
+		n := int(binary.BigEndian.Uint16(size[:]))
+		if cap(buffer) < n {
+			buffer = make([]byte, n)
+		}
+		// UDP flow writes do not retain the payload, so the buffer is reused.
+		payload := buffer[:n]
 		if _, err := io.ReadFull(c, payload); err != nil {
 			return err
 		}
 		q.address = address
-		if _, err := encodeAddress(address); err != nil {
+		if err := validAddress(address); err != nil {
 			return err
 		}
 		err = flows.send(address, q, payload, func(b []byte, from string) error {
@@ -497,8 +506,9 @@ func (r *Runtime) serveSOCKSPackets(control net.Conn, q request) error {
 		if err != nil {
 			return err
 		}
-		fromHost, _, _ := net.SplitHostPort(from.String())
-		if fromHost != peerHost || peer != "" && peer != from.String() || n < 4 || buffer[0] != 0 || buffer[1] != 0 || buffer[2] != 0 {
+		fromText := from.String()
+		fromHost, _, _ := net.SplitHostPort(fromText)
+		if fromHost != peerHost || peer != "" && peer != fromText || n < 4 || buffer[0] != 0 || buffer[1] != 0 || buffer[2] != 0 {
 			continue
 		}
 		reader := bytes.NewReader(buffer[3:n])
@@ -506,23 +516,23 @@ func (r *Runtime) serveSOCKSPackets(control net.Conn, q request) error {
 		if err != nil {
 			continue
 		}
-		if _, err := encodeAddress(address); err != nil {
+		if err := validAddress(address); err != nil {
 			continue
 		}
 		if peer == "" {
-			peer = from.String()
+			peer = fromText
 		}
 		payload := buffer[n-reader.Len() : n]
 		q.address = address
 		q.origin = r.socketOrigin(from, packets.LocalAddr())
 		err = flows.send(address, q, payload, func(b []byte, address string) error {
-			encoded, err := encodeAddress(address)
+			owner := packetBuffers.Get().([]byte)
+			defer packetBuffers.Put(owner)
+			response, err := appendAddress(append(owner[:0], 0, 0, 0), address)
 			if err != nil {
 				return err
 			}
-			response := append([]byte{0, 0, 0}, encoded...)
-			response = append(response, b...)
-			_, err = packets.WriteTo(response, from)
+			_, err = packets.WriteTo(append(response, b...), from)
 			return err
 		})
 		if err != nil && r.ctx.Err() != nil {
@@ -565,21 +575,25 @@ func (r *Runtime) serveSSPackets(in Inbound, packets net.PacketConn) {
 		if err != nil {
 			continue
 		}
-		if _, err := encodeAddress(address); err != nil {
+		if err := validAddress(address); err != nil {
 			continue
 		}
 		payload := plain[len(plain)-reader.Len():]
-		q := request{origin: r.socketOrigin(from, packets.LocalAddr()), network: "udp", address: address, inbound: in.Tag, source: from.String()}
-		_ = flows.send(strconv.Itoa(len(from.String()))+":"+from.String()+address, q, payload, func(b []byte, address string) error {
-			encoded, err := encodeAddress(address)
+		source := from.String()
+		q := request{origin: r.socketOrigin(from, packets.LocalAddr()), network: "udp", address: address, inbound: in.Tag, source: source}
+		_ = flows.send(strconv.Itoa(len(source))+":"+source+address, q, payload, func(b []byte, address string) error {
+			var header [1 + 1 + 255 + 2]byte
+			encoded, err := appendAddress(header[:0], address)
 			if err != nil {
 				return err
 			}
+			owner := packetBuffers.Get().([]byte)
+			defer packetBuffers.Put(owner)
 			var packet []byte
 			if ssr != nil {
-				packet, err = ssr.seal(append(encoded, b...), true)
+				packet, err = ssr.seal(append(append(owner[:0], encoded...), b...), true)
 			} else {
-				packet, err = key.sealPacket(append(encoded, b...), &r.replay)
+				packet, err = key.appendSealPacket(owner[:0], encoded, b, &r.replay)
 			}
 			if err != nil {
 				return err

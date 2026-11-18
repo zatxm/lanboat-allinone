@@ -103,6 +103,8 @@ type request struct {
 	networkOptions                    *NetworkOptions
 	origin                            *socketOrigin
 	logID                             uint64
+	logStart                          time.Time
+	logRule                           int32
 	controllerTrace                   *controllerTrace
 	network, address, inbound, source string
 	ips                               []netip.Addr
@@ -285,8 +287,13 @@ const (
 	matchUnknown
 )
 
-func (r *routeRule) matches(q request) bool { return r.evaluate(q) == matchYes }
-func (r *routeRule) evaluate(q request) routeMatch {
+func (r *routeRule) matches(q request) bool        { return r.eval(&q) == matchYes }
+func (r *routeRule) evaluate(q request) routeMatch { return r.eval(&q) }
+
+// eval and the helpers below take the request by pointer: it is large and
+// evaluated against every rule, so copies dominated matching. They must not
+// modify *q.
+func (r *routeRule) eval(q *request) routeMatch {
 	result := r.evaluateBase(q)
 	if r.rule.Invert && result != matchUnknown {
 		if result == matchYes {
@@ -350,7 +357,7 @@ func boolMatch(b bool) routeMatch {
 	}
 	return matchNo
 }
-func (r *routeRule) evaluateBase(q request) routeMatch {
+func (r *routeRule) evaluateBase(q *request) routeMatch {
 	if len(r.children) > 0 {
 		result := matchNo
 		if r.rule.Mode == "and" {
@@ -359,12 +366,12 @@ func (r *routeRule) evaluateBase(q request) routeMatch {
 		for i := range r.children {
 			child := &r.children[i]
 			if r.rule.Mode == "or" {
-				result = matchOr(result, child.evaluate(q))
+				result = matchOr(result, child.eval(q))
 				if result == matchYes {
 					return result
 				}
 			} else {
-				result = matchAnd(result, child.evaluate(q))
+				result = matchAnd(result, child.eval(q))
 				if result == matchNo {
 					return result
 				}
@@ -379,12 +386,14 @@ func (r *routeRule) evaluateBase(q request) routeMatch {
 	if len(r.sets) == 0 {
 		return fields.result()
 	}
+	target := q
+	if r.rule.RuleSetIPCIDRMatchSource {
+		source := *q
+		source.ipMatchSource = true
+		target = &source
+	}
 	result := matchNo
 	for _, set := range r.sets {
-		target := q
-		if r.rule.RuleSetIPCIDRMatchSource {
-			target.ipMatchSource = true
-		}
 		snapshot := set.current.Load()
 		if snapshot == nil {
 			continue
@@ -393,7 +402,7 @@ func (r *routeRule) evaluateBase(q request) routeMatch {
 		if len(snapshot.rules) == 1 && len(snapshot.rules[0].children) == 0 && !snapshot.rules[0].rule.Invert {
 			m = fields.merge(snapshot.rules[0].groups(target)).result()
 		} else {
-			m = matchAnd(fields.result(), set.evaluate(target))
+			m = matchAnd(fields.result(), set.eval(target))
 		}
 		result = matchOr(result, m)
 		if result == matchYes {
@@ -402,7 +411,7 @@ func (r *routeRule) evaluateBase(q request) routeMatch {
 	}
 	return result
 }
-func (r *routeRule) groups(q request) routeGroups {
+func (r *routeRule) groups(q *request) routeGroups {
 	g := routeGroups{matchUnset, matchUnset, matchUnset, matchUnset, matchUnset, matchYes}
 	rule := &r.rule
 	if q.preMatch && r.preMatchFields&preMatchMissing(q.metadata) != 0 {
@@ -443,7 +452,7 @@ func (r *routeRule) groups(q request) routeGroups {
 				continue
 			}
 			v = strings.Trim(strings.ToLower(v), ".")
-			matched = matched || host == v || strings.HasSuffix(host, "."+v)
+			matched = matched || host == v || len(host) > len(v) && host[len(host)-len(v)-1] == '.' && strings.HasSuffix(host, v)
 		}
 		for _, v := range rule.DomainKeyword {
 			matched = matched || strings.Contains(host, strings.ToLower(v))
@@ -610,7 +619,12 @@ var errICMPReply = errors.New("ICMP echo reply action")
 
 func (r *Runtime) routeResolved(ctx context.Context, q request) (conn net.Conn, resultErr error) {
 	var tag string
-	defer func() { r.logConnection(q, tag, conn, resultErr) }()
+	defer func() {
+		conn = r.logConnection(q, tag, conn, resultErr, true)
+		if resultErr == nil && conn != nil {
+			conn = r.observeRequests(conn, q)
+		}
+	}()
 	decision, err := r.brookInboundDecision(ctx, &q)
 	if err != nil {
 		return nil, err
@@ -700,7 +714,7 @@ func (r *Runtime) routeTarget(ctx context.Context, q request) (request, string, 
 		if mode != 0 && (rule.rule.Action == "" || rule.rule.Action == "route" || rule.rule.Action == "bypass" || rule.rule.Action == "route-options") {
 			continue
 		}
-		m := rule.evaluate(q)
+		m := rule.eval(&q)
 		if m == matchUnknown {
 			host, _, _ := net.SplitHostPort(q.address)
 			if _, err := netip.ParseAddr(host); err != nil {
@@ -710,13 +724,14 @@ func (r *Runtime) routeTarget(ctx context.Context, q request) (request, string, 
 					return q, "", err
 				}
 			}
-			m = rule.evaluate(q)
+			m = rule.eval(&q)
 		}
 		if m != matchYes {
 			continue
 		}
 		o := rule.rule
 		r.logRule(q, i, o)
+		q.logRule = int32(i + 1)
 		switch o.Action {
 		case "bypass":
 			if o.Outbound == "" {
@@ -777,6 +792,9 @@ func (r *Runtime) routeTarget(ctx context.Context, q request) (request, string, 
 		}
 		matched = true
 		break
+	}
+	if !matched {
+		q.logRule = -1
 	}
 	if c := r.controller; c != nil && !c.readOnly {
 		switch {

@@ -110,6 +110,9 @@ type quicConn struct {
 	initialHello                                    []byte
 	peerCIDs                                        map[uint64]quicPeerCID
 	peerCIDSeq, retirePrior                         uint64
+	scratch                                         quicScratch
+	payload                                         []byte
+	batch                                           *quicBatch
 }
 
 func newQUICConn(ctx context.Context, cfg *tls.Config, local, remote net.Addr, cid, dcid, odcid, retry []byte, server bool, send func([]byte) error, cleanup func(), options ...quicOptions) (*quicConn, error) {
@@ -322,7 +325,7 @@ func (c *quicConn) run() {
 				frame := quicVar([]byte{28}, 0)
 				frame = quicVar(frame, 0)
 				frame = quicString(frame, reason)
-				_ = c.send(sealQUICPacket(frame, c.dcid, c.cid, c.token, level, s.nextPN, c.phase, s.write))
+				_ = c.send(c.scratch.sealPacket(frame, c.dcid, c.cid, c.token, level, s.nextPN, c.phase, s.write))
 				break
 			}
 		}
@@ -482,7 +485,7 @@ func (c *quicConn) serviceOperations() {
 				c.finish(op, quicResult{err: errors.New("peer disabled QUIC datagrams")})
 				continue
 			}
-			frame := append(quicVar([]byte{49}, uint64(len(op.data))), op.data...)
+			frame := append(quicVar(append(make([]byte, 0, 1+8+len(op.data)), 49), uint64(len(op.data))), op.data...)
 			if len(frame) > c.payloadLimit() || uint64(len(frame)) > c.peer.maxDatagram {
 				c.finish(op, quicResult{err: errQUICDatagramSize})
 				continue
@@ -531,7 +534,7 @@ func (c *quicConn) serviceOperations() {
 			pos := int(op.accepted.Load())
 			for pos < len(op.data) && c.retained < 1<<20 && s.sendOffset < s.sendLimit && c.sendTotal < c.peer.maxData {
 				n := min(1000, len(op.data)-pos, int(s.sendLimit-s.sendOffset), int(c.peer.maxData-c.sendTotal))
-				frame := quicVar([]byte{14}, s.id)
+				frame := quicVar(append(make([]byte, 0, 1+3*8+n), 14), s.id)
 				frame = quicVar(frame, s.sendOffset)
 				frame = quicVar(frame, uint64(n))
 				frame = append(frame, op.data[pos:pos+n]...)
@@ -747,13 +750,13 @@ func (c *quicConn) handleDatagram(packet []byte) error {
 		if space.read == nil {
 			continue
 		}
-		plain, pn, first, err := openQUICPacket(part, header, space.read, space.largest)
+		plain, pn, first, err := c.scratch.openPacket(part, header, space.read, space.largest)
 		if header.level == 2 && err == nil && (first&4 != 0) != c.readPhase {
 			next, e := space.read.next()
 			if e != nil {
 				return e
 			}
-			plain, pn, first, err = openQUICPacket(part, header, next, space.largest)
+			plain, pn, first, err = c.scratch.openPacket(part, header, next, space.largest)
 			if err == nil {
 				c.previousRead = space.read
 				space.read = next
@@ -766,7 +769,7 @@ func (c *quicConn) handleDatagram(packet []byte) error {
 				var p []byte
 				var n uint64
 				var f byte
-				p, n, f, e = openQUICPacket(part, header, next, space.largest)
+				p, n, f, e = c.scratch.openPacket(part, header, next, space.largest)
 				if e == nil && (f&4 != 0) != c.readPhase && int64(n) > space.largest {
 					c.previousRead = space.read
 					space.read = next
@@ -776,7 +779,7 @@ func (c *quicConn) handleDatagram(packet []byte) error {
 				}
 			}
 			if err != nil && c.previousRead != nil {
-				p, n, f, e := openQUICPacket(part, header, c.previousRead, space.largest)
+				p, n, f, e := c.scratch.openPacket(part, header, c.previousRead, space.largest)
 				if e == nil && n < c.phaseStart {
 					plain, pn, first, err = p, n, f, nil
 				}

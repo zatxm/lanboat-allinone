@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"net"
+	"net/netip"
 	"sync"
 	"time"
 )
@@ -17,13 +18,31 @@ import (
 const quicInboxPackets = 256
 const quicInboxBytes = 256 << 10
 
+// Queued datagrams normally fit a path MTU; larger ones are copied exactly.
+const quicPacketBufferSize = 2048
+
+var quicPacketBuffers = sync.Pool{New: func() any { return new([quicPacketBufferSize]byte) }}
+
+func (p quicDatagram) release() {
+	if p.owner != nil {
+		quicPacketBuffers.Put(p.owner)
+	}
+}
+
 func (c *quicConn) queuePacket(data []byte, remote net.Addr) bool {
 	c.packetMu.Lock()
 	defer c.packetMu.Unlock()
 	if c.ctx.Err() != nil || c.packetBytes+len(data) > quicInboxBytes || len(c.packets) == cap(c.packets) {
 		return false
 	}
-	c.packets <- quicDatagram{data: append([]byte(nil), data...), remote: remote}
+	packet := quicDatagram{remote: remote}
+	if len(data) <= quicPacketBufferSize {
+		packet.owner = quicPacketBuffers.Get().(*[quicPacketBufferSize]byte)
+		packet.data = packet.owner[:copy(packet.owner[:], data)]
+	} else {
+		packet.data = append([]byte(nil), data...)
+	}
+	c.packets <- packet
 	c.packetBytes += len(data)
 	return true
 }
@@ -32,7 +51,8 @@ func (c *quicConn) discardPackets() {
 	defer c.packetMu.Unlock()
 	for {
 		select {
-		case <-c.packets:
+		case packet := <-c.packets:
+			packet.release()
 		default:
 			c.packetBytes = 0
 			return
@@ -47,6 +67,7 @@ func (c *quicConn) receivePacket(packet quicDatagram) error {
 	c.packetRemote = packet.remote
 	err := c.handleDatagram(packet.data)
 	c.packetRemote = nil
+	packet.release()
 	return err
 }
 func (c *quicConn) receiveBurst() error {
@@ -143,8 +164,27 @@ func (e *quicEndpoint) sendRetry(remote net.Addr, h quicHeader) {
 func (e *quicEndpoint) readLoop() {
 	defer close(e.done)
 	buffer := make([]byte, 65535)
+	// Reuse the peer address object across packets from the same source to
+	// avoid allocating a *net.UDPAddr for every datagram.
+	udp, _ := e.packet.(*net.UDPConn)
+	var lastPort netip.AddrPort
+	var lastRemote net.Addr
 	for {
-		n, remote, err := e.packet.ReadFrom(buffer)
+		var n int
+		var remote net.Addr
+		var err error
+		if udp != nil {
+			var source netip.AddrPort
+			n, source, err = udp.ReadFromUDPAddrPort(buffer)
+			if err == nil {
+				if lastRemote == nil || source != lastPort {
+					lastPort, lastRemote = source, net.UDPAddrFromAddrPort(source)
+				}
+				remote = lastRemote
+			}
+		} else {
+			n, remote, err = e.packet.ReadFrom(buffer)
+		}
 		if err != nil {
 			return
 		}
@@ -190,6 +230,11 @@ func (e *quicEndpoint) readLoop() {
 			}
 			conn.sendTo = func(b []byte, target net.Addr) error { _, err := e.packet.WriteTo(b, target); return err }
 			conn.send = func(b []byte) error { return conn.sendTo(b, conn.pathRemote) }
+			conn.enableBatch(udp, func(b, control []byte) error {
+				addr, _ := conn.pathRemote.(*net.UDPAddr)
+				_, _, err := udp.WriteMsgUDP(b, control, addr)
+				return err
+			})
 			e.conns[string(cid)] = conn
 			e.mu.Unlock()
 			go conn.run()
@@ -251,6 +296,9 @@ func dialQUIC(ctx, parent context.Context, raw net.Conn, config *tls.Config, opt
 	if err != nil {
 		raw.Close()
 		return nil, err
+	}
+	if udp := quicUDPConn(raw); udp != nil {
+		conn.enableBatch(udp, func(b, control []byte) error { _, _, err := udp.WriteMsgUDP(b, control, nil); return err })
 	}
 	go func() {
 		defer close(readDone)

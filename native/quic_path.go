@@ -10,6 +10,7 @@ import (
 type quicDatagram struct {
 	data   []byte
 	remote net.Addr
+	owner  *[quicPacketBufferSize]byte
 }
 
 type quicPath struct {
@@ -92,7 +93,7 @@ func (c *quicConn) sendPathFrame(remote net.Addr, frame []byte) error {
 	}
 	payload := make([]byte, budget-overhead)
 	copy(payload, frame)
-	packet := sealQUICPacket(payload, c.dcid, c.cid, nil, 2, space.nextPN, c.phase, space.write)
+	packet := c.scratch.sealPacket(payload, c.dcid, c.cid, nil, 2, space.nextPN, c.phase, space.write)
 	space.nextPN++
 	if p != nil && sameQUICAddress(p.remote, remote) {
 		p.sent += len(packet)

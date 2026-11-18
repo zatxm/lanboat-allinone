@@ -343,8 +343,9 @@ func (c *ssStreamConn) Write(p []byte) (int, error) {
 		c.writeErr = err
 		return 0, err
 	}
-	buffer := buffers.Get().([]byte)
-	defer buffers.Put(buffer)
+	owner := buffers.Get().(*[32 * 1024]byte)
+	defer buffers.Put(owner)
+	buffer := owner[:]
 	written := 0
 	for len(p) > 0 {
 		n := min(len(buffer), len(p))

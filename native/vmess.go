@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/hmac"
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/sha256"
@@ -12,7 +11,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"hash"
 	"hash/crc32"
 	"hash/fnv"
 	"io"
@@ -40,15 +38,46 @@ func newVMessUser(uuid string) (vmessUser, error) {
 	return vmessUser{command: key, id: id, auth: auth}, err
 }
 
+// vmessKDF is VMess's nested HMAC: HMAC-SHA256 keyed "VMess AEAD KDF", with
+// each path element keying another HMAC layer over the previous one.
 func vmessKDF(key []byte, path ...[]byte) []byte {
-	var makeHash func() hash.Hash = func() hash.Hash { return hmac.New(sha256.New, []byte("VMess AEAD KDF")) }
-	for _, element := range path {
-		previous, label := makeHash, element
-		makeHash = func() hash.Hash { return hmac.New(previous, label) }
+	sum := vmessKDFLevel(path, len(path)-1, key)
+	return sum[:]
+}
+
+// vmessKDFLevel evaluates the HMAC layer keyed by path[level] (level -1 is the
+// base HMAC-SHA256) without allocating hash objects; every layer has the
+// SHA-256 block size, as with crypto/hmac.
+func vmessKDFLevel(path [][]byte, level int, message []byte) [sha256.Size]byte {
+	var pad [sha256.BlockSize]byte
+	if level < 0 {
+		copy(pad[:], "VMess AEAD KDF")
+	} else if label := path[level]; len(label) > sha256.BlockSize {
+		sum := vmessKDFLevel(path, level-1, label)
+		copy(pad[:], sum[:])
+	} else {
+		copy(pad[:], label)
 	}
-	h := makeHash()
-	_, _ = h.Write(key)
-	return h.Sum(nil)
+	var stack [512]byte
+	buffer := stack[:0]
+	for i := range pad {
+		pad[i] ^= 0x36
+	}
+	buffer = append(append(buffer, pad[:]...), message...)
+	var inner [sha256.Size]byte
+	if level < 0 {
+		inner = sha256.Sum256(buffer)
+	} else {
+		inner = vmessKDFLevel(path, level-1, buffer)
+	}
+	for i := range pad {
+		pad[i] ^= 0x36 ^ 0x5c
+	}
+	buffer = append(append(buffer[:0], pad[:]...), inner[:]...)
+	if level < 0 {
+		return sha256.Sum256(buffer)
+	}
+	return vmessKDFLevel(path, level-1, buffer)
 }
 
 func vmessGCM(key []byte) cipher.AEAD {

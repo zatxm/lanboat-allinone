@@ -37,27 +37,38 @@ func chachaState(key *[32]byte) [16]uint32 {
 	return s
 }
 
+func chachaQuarter(a, b, c, d uint32) (uint32, uint32, uint32, uint32) {
+	a += b
+	d = bits.RotateLeft32(d^a, 16)
+	c += d
+	b = bits.RotateLeft32(b^c, 12)
+	a += b
+	d = bits.RotateLeft32(d^a, 8)
+	c += d
+	b = bits.RotateLeft32(b^c, 7)
+	return a, b, c, d
+}
+
+// chachaRounds keeps the state in locals so the compiler can hold it in registers.
 func chachaRounds(s *[16]uint32, doubleRounds int) {
-	quarter := func(a, b, c, d int) {
-		s[a] += s[b]
-		s[d] = bits.RotateLeft32(s[d]^s[a], 16)
-		s[c] += s[d]
-		s[b] = bits.RotateLeft32(s[b]^s[c], 12)
-		s[a] += s[b]
-		s[d] = bits.RotateLeft32(s[d]^s[a], 8)
-		s[c] += s[d]
-		s[b] = bits.RotateLeft32(s[b]^s[c], 7)
-	}
+	x0, x1, x2, x3 := s[0], s[1], s[2], s[3]
+	x4, x5, x6, x7 := s[4], s[5], s[6], s[7]
+	x8, x9, x10, x11 := s[8], s[9], s[10], s[11]
+	x12, x13, x14, x15 := s[12], s[13], s[14], s[15]
 	for range doubleRounds {
-		quarter(0, 4, 8, 12)
-		quarter(1, 5, 9, 13)
-		quarter(2, 6, 10, 14)
-		quarter(3, 7, 11, 15)
-		quarter(0, 5, 10, 15)
-		quarter(1, 6, 11, 12)
-		quarter(2, 7, 8, 13)
-		quarter(3, 4, 9, 14)
+		x0, x4, x8, x12 = chachaQuarter(x0, x4, x8, x12)
+		x1, x5, x9, x13 = chachaQuarter(x1, x5, x9, x13)
+		x2, x6, x10, x14 = chachaQuarter(x2, x6, x10, x14)
+		x3, x7, x11, x15 = chachaQuarter(x3, x7, x11, x15)
+		x0, x5, x10, x15 = chachaQuarter(x0, x5, x10, x15)
+		x1, x6, x11, x12 = chachaQuarter(x1, x6, x11, x12)
+		x2, x7, x8, x13 = chachaQuarter(x2, x7, x8, x13)
+		x3, x4, x9, x14 = chachaQuarter(x3, x4, x9, x14)
 	}
+	s[0], s[1], s[2], s[3] = x0, x1, x2, x3
+	s[4], s[5], s[6], s[7] = x4, x5, x6, x7
+	s[8], s[9], s[10], s[11] = x8, x9, x10, x11
+	s[12], s[13], s[14], s[15] = x12, x13, x14, x15
 }
 
 func chachaBlock(key *[32]byte, nonce []byte, counter uint32) [64]byte {
@@ -89,15 +100,29 @@ func hchacha(key *[32]byte, nonce []byte) [32]byte {
 }
 
 func chachaXOR(data []byte, key *[32]byte, nonce []byte) {
+	s := chachaState(key)
+	for i := range 3 {
+		s[13+i] = binary.LittleEndian.Uint32(nonce[i*4:])
+	}
 	counter := uint32(1)
-	for len(data) > 0 {
-		block := chachaBlock(key, nonce, counter)
+	// Whole blocks are XORed a word at a time.
+	for len(data) >= 64 {
+		s[12] = counter
 		counter++
-		n := min(64, len(data))
-		for i := range n {
+		working := s
+		chachaRounds(&working, 10)
+		block := (*[64]byte)(data)
+		for i := range 16 {
+			word := binary.LittleEndian.Uint32(block[i*4:]) ^ (working[i] + s[i])
+			binary.LittleEndian.PutUint32(block[i*4:], word)
+		}
+		data = data[64:]
+	}
+	if len(data) > 0 {
+		block := chachaBlock(key, nonce, counter)
+		for i := range data {
 			data[i] ^= block[i]
 		}
-		data = data[n:]
 	}
 }
 
@@ -146,59 +171,65 @@ func (c *chachaAEAD) Open(dst, nonce, ciphertext, aad []byte) ([]byte, error) {
 	return dst, nil
 }
 
+// polyState is Poly1305 over 2^130-5 with the accumulator in three 64-bit
+// limbs (h2 holds the bits above 2^128) and the clamped r in two limbs.
 type polyState struct {
-	r, h   [5]uint64
-	pad    [16]byte
-	buffer [16]byte
-	used   int
+	r0, r1     uint64
+	s0, s1     uint64
+	h0, h1, h2 uint64
+	buffer     [16]byte
+	used       int
 }
 
 func newPolyState(key []byte) polyState {
-	var p polyState
-	var clamped [24]byte
-	copy(clamped[:16], key[:16])
-	copy(p.pad[:], key[16:])
-	for _, i := range []int{3, 7, 11, 15} {
-		clamped[i] &= 15
+	return polyState{
+		r0: binary.LittleEndian.Uint64(key[0:8]) & 0x0ffffffc0fffffff,
+		r1: binary.LittleEndian.Uint64(key[8:16]) & 0x0ffffffc0ffffffc,
+		s0: binary.LittleEndian.Uint64(key[16:24]),
+		s1: binary.LittleEndian.Uint64(key[24:32]),
 	}
-	for _, i := range []int{4, 8, 12} {
-		clamped[i] &= 252
-	}
-	for i := range 5 {
-		offset := i * 26
-		p.r[i] = binary.LittleEndian.Uint64(clamped[offset/8:]) >> uint(offset%8) & 0x3ffffff
-	}
-	return p
 }
 
-func (p *polyState) block(data []byte) {
-	var padded [24]byte
-	copy(padded[:], data)
-	padded[len(data)] = 1
-	for i := range 5 {
-		offset := i * 26
-		p.h[i] += binary.LittleEndian.Uint64(padded[offset/8:]) >> uint(offset%8) & 0x3ffffff
+// blocks absorbs whole 16-byte blocks. high is the 2^128 marker bit: 1 for
+// full blocks, 0 for the final partial block whose marker is already padded in.
+func (p *polyState) blocks(data []byte, high uint64) {
+	h0, h1, h2 := p.h0, p.h1, p.h2
+	r0, r1 := p.r0, p.r1
+	for len(data) >= 16 {
+		var c uint64
+		h0, c = bits.Add64(h0, binary.LittleEndian.Uint64(data[0:8]), 0)
+		h1, c = bits.Add64(h1, binary.LittleEndian.Uint64(data[8:16]), c)
+		h2 += c + high
+		data = data[16:]
+
+		// h*r as 64-bit columns. Clamping keeps r below 2^60 and h2 stays at most
+		// 7, so h2*r fits one limb and the column sums cannot overflow 128 bits.
+		hi00, lo00 := bits.Mul64(h0, r0)
+		hi10, lo10 := bits.Mul64(h1, r0)
+		hi01, lo01 := bits.Mul64(h0, r1)
+		hi11, lo11 := bits.Mul64(h1, r1)
+		m1lo, c := bits.Add64(lo10, lo01, 0)
+		m1hi := hi10 + hi01 + c
+		m2lo, c := bits.Add64(h2*r0, lo11, 0)
+		m2hi := hi11 + c
+
+		t1, c := bits.Add64(m1lo, hi00, 0)
+		t2, c := bits.Add64(m2lo, m1hi, c)
+		t3 := h2*r1 + m2hi + c
+
+		// Partial reduction with 2^130 = 5: fold the bits above 2^130 back in as
+		// 4x (still shifted by two) plus x.
+		h0, h1, h2 = lo00, t1, t2&3
+		cLo, cHi := t2&^3, t3
+		h0, c = bits.Add64(h0, cLo, 0)
+		h1, c = bits.Add64(h1, cHi, c)
+		h2 += c
+		cLo, cHi = cLo>>2|cHi<<62, cHi>>2
+		h0, c = bits.Add64(h0, cLo, 0)
+		h1, c = bits.Add64(h1, cHi, c)
+		h2 += c
 	}
-	var product [5]uint64
-	for i := range 5 {
-		for j := range 5 {
-			k := i + j
-			coefficient := uint64(1)
-			if k >= 5 {
-				k -= 5
-				coefficient = 5
-			}
-			product[k] += p.h[i] * p.r[j] * coefficient
-		}
-	}
-	for i := 0; i < 4; i++ {
-		product[i+1] += product[i] >> 26
-		p.h[i] = product[i] & 0x3ffffff
-	}
-	p.h[4] = product[4] & 0x3ffffff
-	p.h[0] += (product[4] >> 26) * 5
-	p.h[1] += p.h[0] >> 26
-	p.h[0] &= 0x3ffffff
+	p.h0, p.h1, p.h2 = h0, h1, h2
 }
 
 func (p *polyState) write(data []byte) {
@@ -206,14 +237,15 @@ func (p *polyState) write(data []byte) {
 		n := copy(p.buffer[p.used:], data)
 		p.used += n
 		data = data[n:]
-		if p.used == 16 {
-			p.block(p.buffer[:])
-			p.used = 0
+		if p.used < 16 {
+			return
 		}
+		p.blocks(p.buffer[:], 1)
+		p.used = 0
 	}
-	for len(data) >= 16 {
-		p.block(data[:16])
-		data = data[16:]
+	if full := len(data) &^ 15; full > 0 {
+		p.blocks(data[:full], 1)
+		data = data[full:]
 	}
 	if len(data) > 0 {
 		p.used = copy(p.buffer[:], data)
@@ -222,34 +254,23 @@ func (p *polyState) write(data []byte) {
 
 func (p *polyState) sum() [16]byte {
 	if p.used > 0 {
-		p.block(p.buffer[:p.used])
+		var last [16]byte
+		copy(last[:], p.buffer[:p.used])
+		last[p.used] = 1
+		p.blocks(last[:], 0)
 	}
-	for range 2 {
-		for i := 0; i < 4; i++ {
-			p.h[i+1] += p.h[i] >> 26
-			p.h[i] &= 0x3ffffff
-		}
-		p.h[0] += (p.h[4] >> 26) * 5
-		p.h[4] &= 0x3ffffff
-	}
-	var reduced [5]uint64
-	carry := uint64(5)
-	for i := range 5 {
-		value := p.h[i] + carry
-		reduced[i] = value & 0x3ffffff
-		carry = value >> 26
-	}
-	mask := uint64(0) - carry
-	for i := range 5 {
-		p.h[i] = p.h[i]&^mask | reduced[i]&mask
-	}
-	lo := p.h[0] | p.h[1]<<26 | p.h[2]<<52
-	hi := p.h[2]>>12 | p.h[3]<<14 | p.h[4]<<40
-	lo, carry = bits.Add64(lo, binary.LittleEndian.Uint64(p.pad[:8]), 0)
-	hi, _ = bits.Add64(hi, binary.LittleEndian.Uint64(p.pad[8:]), carry)
+	// h is below 2(2^130-5); subtract the prime once in constant time.
+	t0, b := bits.Sub64(p.h0, 0xfffffffffffffffb, 0)
+	t1, b := bits.Sub64(p.h1, 0xffffffffffffffff, b)
+	_, b = bits.Sub64(p.h2, 3, b)
+	keep := -b
+	h0 := p.h0&keep | t0&^keep
+	h1 := p.h1&keep | t1&^keep
+	h0, c := bits.Add64(h0, p.s0, 0)
+	h1, _ = bits.Add64(h1, p.s1, c)
 	var tag [16]byte
-	binary.LittleEndian.PutUint64(tag[:8], lo)
-	binary.LittleEndian.PutUint64(tag[8:], hi)
+	binary.LittleEndian.PutUint64(tag[:8], h0)
+	binary.LittleEndian.PutUint64(tag[8:], h1)
 	return tag
 }
 

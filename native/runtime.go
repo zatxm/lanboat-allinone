@@ -25,6 +25,16 @@ type Stats struct {
 }
 
 type Runtime struct {
+	requestLogger            atomic.Pointer[requestLogger]
+	dnsLogger                atomic.Pointer[dnsLogger]
+	requestLogDrops          atomic.Uint64
+	dnsLogDrops              atomic.Uint64
+	connectionLogger         atomic.Pointer[connectionLogger]
+	connectionLogDrops       atomic.Uint64
+	ruleLabels               []string
+	logQueues                sync.WaitGroup
+	logQueueMu               sync.Mutex
+	logQueuesClosed          bool
 	genericMuxClients        map[string]*genericMuxClient
 	namespaces               map[string]*networkNamespace
 	namespaceKernelOnly      bool
@@ -171,8 +181,17 @@ func New(ctx context.Context, raw []byte, logger *zap.Logger) (*Runtime, error) 
 			if err != nil {
 				return nil, err
 			}
-			logger = zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), writer, level))
-			closeLogger = func() { _ = logger.Sync(); release() }
+			stop := func() {}
+			if output != "stdout" && output != "stderr" {
+				// File logs batch writes instead of one locked syscall per entry;
+				// Close flushes, and entries reach disk within a second otherwise.
+				buffered := &zapcore.BufferedWriteSyncer{WS: writer, Size: 256 << 10, FlushInterval: time.Second}
+				writer, stop = buffered, func() { _ = buffered.Stop() }
+			}
+			encoder := zap.NewProductionEncoderConfig()
+			encoder.TimeKey, encoder.EncodeTime = "time", zapcore.ISO8601TimeEncoder
+			logger = zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(encoder), writer, level))
+			closeLogger = func() { _ = logger.Sync(); stop(); release() }
 		}
 	}
 	// Parent cancellation enters Close's bounded cleanup before cancelling
@@ -494,6 +513,7 @@ func New(ctx context.Context, raw []byte, logger *zap.Logger) (*Runtime, error) 
 		}
 	}
 	r.rules, _ = compileRoute(cfg.Route, r.outbounds, r.ruleSets)
+	r.ruleLabels = newRuleLabels(cfg.Route.Rules)
 	r.resolver, err = newResolver(cfg.DNS, r)
 	if err != nil {
 		return nil, err
@@ -698,6 +718,7 @@ func (r *Runtime) Start() error {
 			if in.Type == "masque" {
 				options = in.connection.quic()
 			}
+			options = in.QUICReceiveWindows.apply(options)
 			l, err := listenQUIC(r.ctx, packets, cfg, options)
 			if err != nil {
 				packets.Close()
@@ -1133,6 +1154,7 @@ func (r *Runtime) Close() error {
 	for _, n := range r.namespaces {
 		n.close()
 	}
+	r.closeLogQueues()
 	r.closeLogger()
 	return usageErr
 }
@@ -1186,7 +1208,8 @@ func (r *Runtime) Dial(ctx context.Context, network, address string) (net.Conn, 
 	return r.routeDial(ctx, request{network: network, address: address})
 }
 
-var buffers = sync.Pool{New: func() any { return make([]byte, 32*1024) }}
+// buffers holds bulk relay and transport frame buffers; storing pointers keeps Put allocation-free.
+var buffers = sync.Pool{New: func() any { return new([32 * 1024]byte) }}
 var relaySmallBuffers = sync.Pool{New: func() any { return new([2048]byte) }}
 
 func (r *Runtime) relay(a, b net.Conn) {
@@ -1222,7 +1245,7 @@ func copyRelay(dst io.Writer, src io.Reader, count *atomic.Int64) error {
 	small := relaySmallBuffers.Get().(*[2048]byte)
 	defer relaySmallBuffers.Put(small)
 	buffer := small[:]
-	var bulk []byte
+	var bulk *[32 * 1024]byte
 	defer func() {
 		if bulk != nil {
 			buffers.Put(bulk)
@@ -1240,8 +1263,8 @@ func copyRelay(dst io.Writer, src io.Reader, count *atomic.Int64) error {
 				return io.ErrShortWrite
 			}
 			if bulk == nil && n == len(buffer) {
-				bulk = buffers.Get().([]byte)
-				buffer = bulk
+				bulk = buffers.Get().(*[32 * 1024]byte)
+				buffer = bulk[:]
 			}
 		}
 		if readErr != nil {

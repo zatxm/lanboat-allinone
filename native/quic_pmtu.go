@@ -69,7 +69,7 @@ func (c *quicConn) servicePMTU(now time.Time) error {
 	payload[0] = 1
 	pn := s.nextPN
 	s.nextPN++
-	packet := sealQUICPacket(payload, c.dcid, c.cid, nil, 2, pn, c.phase, s.write)
+	packet := c.scratch.sealPacket(payload, c.dcid, c.cid, nil, 2, pn, c.phase, s.write)
 	if err := c.send(packet); err != nil {
 		if !quicMessageTooLarge(err) {
 			return err
@@ -140,6 +140,8 @@ func quicDontFragment(socket any) error {
 		case *controllerConn:
 			socket = c.Conn
 		case *controllerWireConn:
+			socket = c.Conn
+		case *connectionLogConn:
 			socket = c.Conn
 		case *ownedConn:
 			socket = c.Conn

@@ -133,7 +133,7 @@ func (c *trustClient) h3Session(ctx context.Context) (*quicConn, error) {
 	if c.outbound.Type == "naive" {
 		options = naiveQUICOptions(c.outbound.QUICCongestionControl, false)
 	}
-	q, e := dialQUIC(ctx, c.runtime.ctx, raw, cfg, options)
+	q, e := dialQUIC(ctx, c.runtime.ctx, raw, cfg, c.outbound.QUICReceiveWindows.apply(options))
 	if e != nil {
 		return nil, e
 	}

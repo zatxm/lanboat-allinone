@@ -493,6 +493,14 @@ func (r *Runtime) serveHTTP(in Inbound, c *bufferedConn, q request) error {
 		}
 	}
 	if req.Method == http.MethodConnect {
+		if observer := r.requestLogger.Load(); observer != nil {
+			entry := RequestLog{URL: req.Host, Method: http.MethodConnect, Destination: req.Host, Inbound: in.Tag}
+			if observer.full {
+				entry.Headers = req.Header.Clone()
+				entry.Headers.Del("Proxy-Authorization")
+			}
+			observer.push(entry)
+		}
 		if !validHTTPHost(req.Host) {
 			return errors.New("invalid CONNECT authority")
 		}

@@ -72,6 +72,19 @@ lanboat-allinone server -c server.json
 
 有受信任证书时，客户端通常使用系统证书校验。使用自己的CA或自签名证书时，在客户端`tls.certificate_path`指定相应证书；示例中的`./server.crt`就是此用途。`server_name`应与证书中的名称匹配。
 
+### QUIC接收窗口
+
+Hysteria、Hysteria2、TUIC、Juicity、Naive HTTP/3等基于QUIC的入站和出站可设置接收窗口，数值为字节数或`"2MB"`这类字符串：
+
+```json
+{"type": "hysteria2", "tag": "proxy", "stream_receive_window": "2MB", "connection_receive_window": "8MB"}
+```
+
+- `stream_receive_window`：单个连接（流）未读取数据的上限，默认1MB，可设16KB-64MB。单连接吞吐约为“窗口÷往返延迟”，高延迟线路上调大可提高下载速度。
+- `connection_receive_window`：同一QUIC连接所有流的总上限，默认4MB，可设64KB-64MB，且不能小于`stream_receive_window`。
+
+窗口只在读取方处理不过来时才占用内存，每个QUIC连接最多占用约`connection_receive_window`大小。出站设置影响下载方向，入站设置影响上传方向；内存受限的设备不建议设得过大。
+
 ## TLS和密钥
 
 - 服务端证书及私钥由`certificate_path`、`key_path`指定。
