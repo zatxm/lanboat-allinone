@@ -9,8 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 const sudokuUsageMax = 1 << 20
@@ -152,7 +150,7 @@ func (s *sudokuUsers) run() {
 			return
 		case <-s.flush:
 			if err := s.persist(); err != nil {
-				s.r.logger.Error("save Sudoku usage", zap.String("inbound", s.inbound), zap.Error(err))
+				logError(s.r.logger, err, s.r.inboundLabel(s.inbound), ": save usage")
 			}
 		case now := <-tick.C:
 			elapsed := now.Sub(before).Seconds()
@@ -168,7 +166,7 @@ func (s *sudokuUsers) run() {
 			before = now
 			if now.Sub(lastSave) >= time.Minute {
 				if err := s.persist(); err != nil {
-					s.r.logger.Error("save Sudoku usage", zap.String("inbound", s.inbound), zap.Error(err))
+					logError(s.r.logger, err, s.r.inboundLabel(s.inbound), ": save usage")
 				}
 				lastSave = now
 			}

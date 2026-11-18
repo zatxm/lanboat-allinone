@@ -16,8 +16,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 type RuleSet struct {
@@ -387,7 +385,7 @@ func (r *Runtime) updateRuleSets() {
 					interval, _ = optionDuration(s.UpdateInterval, 24*time.Hour)
 				}
 				if err := r.loadRuleSet(r.ctx, s, true); err != nil {
-					r.logger.Warn("rule_set update failed; retaining current rules", zap.String("tag", s.Tag), zap.Error(err))
+					logWarn(r.logger, err, "router: update rule-set ", s.Tag, ", retaining current rules")
 					interval = min(interval, time.Minute)
 				} else if s.Type == "local" {
 					fingerprints[s.Tag] = observed

@@ -2,28 +2,19 @@ package native
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-)
-
-// Connection log messages are constant so log processors can group them; the
-// varying parts are fields.
-const (
-	logInboundConnection  = "inbound connection"
-	logOutboundConnection = "outbound connection"
-	logConnectionFailed   = "connection failed"
-	logConnectionClosed   = "connection closed"
 )
 
 // ConnectionEvent identifies a connection lifecycle stage.
@@ -52,7 +43,8 @@ func (e ConnectionEvent) String() string {
 // emitted for routed streams and UDP sessions only.
 type ConnectionLog struct {
 	Event ConnectionEvent
-	// ID is shared by every event of one connection, including zap entries.
+	// ID is shared by every event of one connection and matches the
+	// "[id elapsed]" prefix of its log lines.
 	ID          uint64
 	Time        time.Time
 	Network     string
@@ -71,7 +63,8 @@ type ConnectionLog struct {
 	// used, or REJECT when a rule rejected the connection.
 	RouteOutbound string
 	Outbound      string
-	// Rule describes the matched route rule, or "final" when none matched.
+	// Rule is the matched route rule's condition in sing-box form, such as
+	// "domain_suffix=example.com", or "final" when none matched.
 	Rule string
 	// Elapsed is measured from inbound acceptance: the dial latency for Opened
 	// and Failed, the lifetime for Closed.
@@ -104,65 +97,104 @@ func (r *Runtime) SetConnectionLogger(record func(ConnectionLog), closed bool) {
 // ConnectionLogDrops reports connection events dropped because the callback fell behind.
 func (r *Runtime) ConnectionLogDrops() uint64 { return r.connectionLogDrops.Load() }
 
-func (r *Runtime) logInbound(q *request) {
-	var entry *zapcore.CheckedEntry
-	if !r.config.Log.Disabled {
-		entry = r.logger.Check(zapcore.InfoLevel, logInboundConnection)
+// logPrefix is sing-box's "[id elapsed] " connection prefix.
+func (q *request) logPrefix(now time.Time) string {
+	if q.logStart.IsZero() {
+		q.logStart = now
 	}
-	if entry == nil && r.connectionLogger.Load() == nil {
+	return "[" + strconv.FormatUint(q.logID, 10) + " " + formatLogDuration(now.Sub(q.logStart)) + "] "
+}
+
+// logRequest writes a connection-scoped entry: "[id elapsed] tag: parts: err".
+func (r *Runtime) logRequest(q *request, level zapcore.Level, tag string, err error, parts ...string) {
+	if q.logID == 0 || r.config.Log.Disabled {
+		return
+	}
+	if entry := r.logger.Check(level, ""); entry != nil {
+		entry.Message = q.logPrefix(time.Now()) + tag + ": " + joinLog(err, parts)
+		entry.Write()
+	}
+}
+
+func packetWord(network string) string {
+	if network == "tcp" {
+		return ""
+	}
+	return "packet "
+}
+
+func (r *Runtime) logInbound(q *request) {
+	logging := !r.config.Log.Disabled && r.logger.Core().Enabled(zapcore.InfoLevel)
+	if !logging && r.connectionLogger.Load() == nil {
 		return
 	}
 	q.logID = r.logSequence.Add(1)
 	q.logStart = time.Now()
-	if entry != nil {
-		entry.Write(zap.Uint64("connection_id", q.logID), zap.String("network", q.network), zap.String("inbound", q.inbound), zap.String("source", q.source), zap.String("destination", q.address))
+	if !logging {
+		return
 	}
+	tag, kind := r.inboundLabel(q.inbound), packetWord(q.network)
+	if q.source != "" {
+		r.logRequest(q, zapcore.InfoLevel, tag, nil, "inbound ", kind, "connection from ", q.source)
+	}
+	r.logRequest(q, zapcore.InfoLevel, tag, nil, "inbound ", kind, "connection to ", q.address)
 }
 
-func connectionLogLevel(err error) zapcore.Level {
-	if err == nil {
-		return zapcore.InfoLevel
-	}
-	if errors.Is(err, ErrRejected) || errors.Is(err, ErrDropped) || errors.Is(err, net.ErrClosed) || errors.Is(err, context.Canceled) {
-		return zapcore.DebugLevel
-	}
-	return zapcore.ErrorLevel
+func closedOrRejected(err error) bool {
+	return errors.Is(err, ErrRejected) || errors.Is(err, ErrDropped) || errors.Is(err, net.ErrClosed) || errors.Is(err, context.Canceled)
 }
 
-// logConnection reports the routing result. With track it returns conn wrapped
-// to report its close when anything consumes close events.
+// logConnection reports the routing result the way sing-box does: the chosen
+// outbound announces the connection, router failures are logged by "router"
+// and dial failures by "connection". With track it returns conn wrapped to
+// report its close when anything consumes close events.
 func (r *Runtime) logConnection(q request, tag string, conn net.Conn, err error, track bool) net.Conn {
 	observer := r.connectionLogger.Load()
 	logging := !r.config.Log.Disabled
-	var entry *zapcore.CheckedEntry
-	if logging {
-		message := logOutboundConnection
-		if err != nil {
-			message = logConnectionFailed
+	level := zapcore.InfoLevel
+	if err != nil {
+		level = zapcore.ErrorLevel
+		if closedOrRejected(err) {
+			level = zapcore.DebugLevel
 		}
-		entry = r.logger.Check(connectionLogLevel(err), message)
 	}
+	enabled := logging && r.logger.Core().Enabled(level)
 	track = track && err == nil && conn != nil && (observer != nil && observer.closed || logging && r.logger.Core().Enabled(zapcore.DebugLevel))
-	if entry == nil && observer == nil && !track {
+	if !enabled && observer == nil && !track {
 		return conn
 	}
 	if q.logID == 0 {
 		q.logID = r.logSequence.Add(1)
 	}
 	event := r.connectionEvent(&q, tag, conn, err)
-	if entry != nil {
-		entry.Write(event.fields()...)
+	if enabled {
+		switch {
+		case err == nil:
+			r.logRequest(&q, level, r.outboundLabel(event.selected), nil, "outbound ", packetWord(q.network), "connection to ", q.address)
+		case closedOrRejected(err):
+			r.logRequest(&q, level, "router", event.Error, "connection closed")
+		case tag == "":
+			r.logRequest(&q, level, "router", event.Error)
+		default:
+			r.logRequest(&q, level, "connection", event.Error, "open outbound connection")
+		}
 	}
 	if observer != nil {
-		observer.push(event)
+		observer.push(event.ConnectionLog)
 	}
 	if track {
-		return &connectionLogConn{Conn: conn, r: r, event: event, start: q.logStart}
+		return &connectionLogConn{Conn: conn, r: r, event: event.ConnectionLog, start: q.logStart}
 	}
 	return conn
 }
 
-func (r *Runtime) connectionEvent(q *request, tag string, conn net.Conn, err error) ConnectionLog {
+type connectionEvent struct {
+	ConnectionLog
+	// selected is the internal tag of the outbound that carries the connection.
+	selected string
+}
+
+func (r *Runtime) connectionEvent(q *request, tag string, conn net.Conn, err error) connectionEvent {
 	if tag == "" && (errors.Is(err, ErrRejected) || errors.Is(err, ErrDropped)) {
 		tag = "REJECT"
 	}
@@ -182,12 +214,13 @@ func (r *Runtime) connectionEvent(q *request, tag string, conn net.Conn, err err
 			conn = nil
 		}
 	}
+	routed, used := tag, selected
 	if c := r.controller; c != nil {
-		if selected == c.directTag {
-			selected = "DIRECT"
+		if used == c.directTag {
+			used = "DIRECT"
 		}
-		if tag == c.directTag {
-			tag = "DIRECT"
+		if routed == c.directTag {
+			routed = "DIRECT"
 		}
 	}
 	if err != nil {
@@ -198,101 +231,180 @@ func (r *Runtime) connectionEvent(q *request, tag string, conn net.Conn, err err
 		}
 	}
 	now := time.Now()
-	var elapsed time.Duration
-	if !q.logStart.IsZero() {
-		elapsed = now.Sub(q.logStart)
+	if q.logStart.IsZero() {
+		q.logStart = now
 	}
-	m := &q.metadata
 	kind := ConnectionOpened
 	if err != nil {
 		kind = ConnectionFailed
 	}
-	return ConnectionLog{
+	m := &q.metadata
+	return connectionEvent{selected: selected, ConnectionLog: ConnectionLog{
 		Event: kind, ID: q.logID, Time: now, Network: q.network, Inbound: q.inbound, Source: q.source, Destination: q.address,
 		Domain: m.Domain, Protocol: m.Protocol, Client: m.Client, ProcessName: m.ProcessName, ProcessPath: m.ProcessPath,
 		SourceMACAddress: m.SourceMACAddress, SourceHostname: m.SourceHostname,
-		RouteOutbound: tag, Outbound: selected, Rule: r.ruleLabel(q.logRule), Elapsed: elapsed, Error: err,
-	}
+		RouteOutbound: routed, Outbound: used, Rule: r.ruleText(q.logRule), Elapsed: now.Sub(q.logStart), Error: err,
+	}}
 }
 
-func (e *ConnectionLog) fields() []zap.Field {
-	fields := make([]zap.Field, 0, 20)
-	fields = append(fields, zap.Uint64("connection_id", e.ID), zap.String("network", e.Network), zap.String("inbound", e.Inbound), zap.String("source", e.Source), zap.String("destination", e.Destination), zap.String("outbound", e.Outbound), zap.String("route_outbound", e.RouteOutbound))
-	if e.Rule != "" {
-		fields = append(fields, zap.String("rule", e.Rule))
-	}
-	fields = append(fields, zap.Int64("elapsed_ms", e.Elapsed.Milliseconds()))
-	if e.Domain != "" {
-		fields = append(fields, zap.String("domain", e.Domain))
-	}
-	if e.Protocol != "" {
-		fields = append(fields, zap.String("protocol", e.Protocol))
-	}
-	if e.Client != "" {
-		fields = append(fields, zap.String("client", e.Client))
-	}
-	if e.ProcessName != "" {
-		fields = append(fields, zap.String("process_name", e.ProcessName), zap.String("process_path", e.ProcessPath))
-	}
-	if e.SourceMACAddress != "" {
-		fields = append(fields, zap.String("source_mac_address", e.SourceMACAddress))
-	}
-	if e.SourceHostname != "" {
-		fields = append(fields, zap.String("source_hostname", e.SourceHostname))
-	}
-	if e.Event == ConnectionClosed {
-		fields = append(fields, zap.Int64("upload", e.Upload), zap.Int64("download", e.Download))
-	}
-	if e.Error != nil {
-		fields = append(fields, zap.Error(e.Error))
-	}
-	return fields
+// ruleLog holds sing-box style descriptions of the top-level route rules,
+// built once so routing never formats rules.
+type ruleLog struct {
+	condition string
+	// match is the debug message "match[i] condition => action".
+	match string
 }
 
-// ruleLabels hold one short description per top-level route rule, built once
-// so connection logs never format rules on the dial path.
-func newRuleLabels(rules []Rule) []string {
-	labels := make([]string, len(rules))
+func newRuleLogs(rules []Rule) []ruleLog {
+	logs := make([]ruleLog, len(rules))
 	for i, o := range rules {
-		d := ruleDescription(o)
-		payload := d.Payload
-		if d.Type == "Rule" && payload != "" {
-			// Unnamed conditions are summarized without the action fields.
-			o.Action, o.Outbound = "", ""
-			if b, err := json.Marshal(o); err == nil {
-				payload = string(b)
-			}
-		}
-		if len(payload) > 64 {
-			payload = payload[:61] + "..."
-		}
-		labels[i] = "#" + strconv.Itoa(i) + " " + d.Type
-		if payload != "" {
-			labels[i] += "(" + payload + ")"
-		}
+		condition := ruleCondition(o)
+		logs[i] = ruleLog{condition: condition, match: "match[" + strconv.Itoa(i) + "] " + condition + " => " + ruleAction(o)}
 	}
-	return labels
+	return logs
+}
+
+// Rule fields that configure the action rather than select connections.
+var ruleActionFields = map[string]bool{"override_address": true, "override_port": true, "sniffer": true, "timeout": true, "server": true, "strategy": true, "disable_cache": true, "disable_optimistic_cache": true, "rewrite_ttl": true, "client_subnet": true, "method": true, "no_drop": true, "type": true, "mode": true, "rules": true, "invert": true, "action": true, "outbound": true}
+
+func ruleCondition(o Rule) string {
+	var text string
+	if o.Type == "logical" {
+		op := " && "
+		if o.Mode == "or" {
+			op = " || "
+		}
+		parts := make([]string, len(o.Rules))
+		for i, child := range o.Rules {
+			parts[i] = ruleCondition(child)
+		}
+		text = "(" + strings.Join(parts, op) + ")"
+	} else {
+		var items []string
+		v, t := reflect.ValueOf(o), reflect.TypeOf(o)
+		for i := range t.NumField() {
+			f := t.Field(i)
+			name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+			if f.Anonymous || !f.IsExported() || name == "" || ruleActionFields[name] || v.Field(i).IsZero() {
+				continue
+			}
+			items = append(items, ruleItem(name, v.Field(i)))
+		}
+		text = strings.Join(items, " ")
+	}
+	if o.Invert {
+		return "!(" + text + ")"
+	}
+	return text
+}
+
+func ruleItem(name string, v reflect.Value) string {
+	switch v.Kind() {
+	case reflect.Bool:
+		return name
+	case reflect.Slice:
+		if v.Len() == 1 {
+			return name + "=" + fmt.Sprint(v.Index(0).Interface())
+		}
+		values := make([]string, v.Len())
+		for i := range values {
+			values[i] = fmt.Sprint(v.Index(i).Interface())
+		}
+		return name + "=[" + strings.Join(values, " ") + "]"
+	case reflect.Pointer:
+		return name + "=" + fmt.Sprint(v.Elem().Interface())
+	}
+	return name + "=" + fmt.Sprint(v.Interface())
+}
+
+func ruleAction(o Rule) string {
+	switch o.Action {
+	case "", "route":
+		return "route(" + o.Outbound + ")"
+	case "reject":
+		if o.Method == "" || o.Method == "default" {
+			return "reject"
+		}
+		return "reject(" + o.Method + ")"
+	case "sniff":
+		if len(o.Sniffer) == 0 {
+			return "sniff"
+		}
+		return "sniff(" + strings.Join(o.Sniffer, ",") + ")"
+	case "resolve":
+		if o.Server == "" {
+			return "resolve"
+		}
+		return "resolve(" + o.Server + ")"
+	case "bypass":
+		if o.Outbound == "" {
+			return "bypass"
+		}
+		return "bypass(" + o.Outbound + ")"
+	}
+	return o.Action
 }
 
 // logRule values: 0 when routing did not evaluate rules, -1 when no rule
 // matched, otherwise the matched rule index plus one.
-func (r *Runtime) ruleLabel(rule int32) string {
+func (r *Runtime) ruleText(rule int32) string {
 	switch {
 	case rule < 0:
 		return "final"
-	case rule > 0 && int(rule) <= len(r.ruleLabels):
-		return r.ruleLabels[rule-1]
+	case rule > 0 && int(rule) <= len(r.ruleLogs):
+		return r.ruleLogs[rule-1].condition
 	}
 	return ""
 }
 
-func (r *Runtime) logRule(q request, index int, o Rule) {
-	if q.logID == 0 || r.config.Log.Disabled {
+func (r *Runtime) logRule(q *request, index int) {
+	if index < len(r.ruleLogs) {
+		r.logRequest(q, zapcore.DebugLevel, "router", nil, r.ruleLogs[index].match)
+	}
+}
+
+// logMetadata reports what routing discovered about the connection's origin.
+func (r *Runtime) logMetadata(q *request) {
+	m := &q.metadata
+	if q.logID == 0 || m.ProcessPath == "" && m.ProcessName == "" && m.PackageName == "" && m.User == "" && m.UserID == nil && m.SourceMACAddress == "" && m.SourceHostname == "" {
 		return
 	}
-	if entry := r.logger.Check(zapcore.DebugLevel, "routing rule matched"); entry != nil {
-		entry.Write(zap.Uint64("connection_id", q.logID), zap.Int("rule_index", index), zap.String("action", o.Action), zap.String("outbound", o.Outbound))
+	switch {
+	case m.ProcessPath != "":
+		r.logRequest(q, zapcore.InfoLevel, "router", nil, "found process path: ", m.ProcessPath)
+	case m.ProcessName != "":
+		r.logRequest(q, zapcore.InfoLevel, "router", nil, "found process name: ", m.ProcessName)
 	}
+	if m.PackageName != "" {
+		r.logRequest(q, zapcore.InfoLevel, "router", nil, "found package name: ", m.PackageName)
+	}
+	if m.User != "" {
+		r.logRequest(q, zapcore.InfoLevel, "router", nil, "found user: ", m.User)
+	} else if m.UserID != nil {
+		r.logRequest(q, zapcore.InfoLevel, "router", nil, "found user id: ", strconv.FormatUint(uint64(*m.UserID), 10))
+	}
+	if m.SourceMACAddress != "" {
+		r.logRequest(q, zapcore.InfoLevel, "router", nil, "found source MAC address: ", m.SourceMACAddress)
+	}
+	if m.SourceHostname != "" {
+		r.logRequest(q, zapcore.InfoLevel, "router", nil, "found source hostname: ", m.SourceHostname)
+	}
+}
+
+// logSniff matches sing-box's sniff result message.
+func (r *Runtime) logSniff(q *request) {
+	m := &q.metadata
+	if m.Protocol == "" {
+		return
+	}
+	parts := []string{"sniffed ", packetWord(q.network), "protocol: ", m.Protocol}
+	if m.Domain != "" {
+		parts = append(parts, ", domain: ", m.Domain)
+	}
+	if m.Client != "" {
+		parts = append(parts, ", client: ", m.Client)
+	}
+	r.logRequest(q, zapcore.DebugLevel, "router", nil, parts...)
 }
 
 // connectionLogConn reports a routed connection's totals once it closes.
@@ -360,11 +472,8 @@ func (c *connectionLogConn) report() {
 	if err := c.failure.Load(); err != nil {
 		e.Error = *err
 	}
-	if !c.r.config.Log.Disabled {
-		if entry := c.r.logger.Check(zapcore.DebugLevel, logConnectionClosed); entry != nil {
-			entry.Write(e.fields()...)
-		}
-	}
+	q := request{logID: e.ID, logStart: c.start}
+	c.r.logRequest(&q, zapcore.DebugLevel, "connection", e.Error, "connection closed (upload ", logBytes(e.Upload), ", download ", logBytes(e.Download), ")")
 	if observer := c.r.connectionLogger.Load(); observer != nil && observer.closed {
 		observer.push(e)
 	}
@@ -384,133 +493,4 @@ func (c *connectionLogUDP) writePacket(p []byte, address string) (int, error) {
 	n, err := c.inner.writePacket(p, address)
 	c.owner.count(true, n, err)
 	return n, err
-}
-
-// logText renders an entry as one human-readable line for Clash API log
-// subscribers. Connection entries use the sing-box style "[id elapsed]" prefix.
-func logText(message string, fields []zapcore.Field) string {
-	var id, network, inbound, source, destination, domain, outbound, route, rule, failure string
-	elapsed, upload, download := int64(-1), int64(-1), int64(-1)
-	for _, f := range fields {
-		switch f.Key {
-		case "connection_id":
-			id = strconv.FormatUint(uint64(f.Integer), 10)
-		case "network":
-			network = f.String
-		case "inbound":
-			inbound = f.String
-		case "source":
-			source = f.String
-		case "destination":
-			destination = f.String
-		case "domain":
-			domain = f.String
-		case "outbound":
-			outbound = f.String
-		case "route_outbound":
-			route = f.String
-		case "rule":
-			rule = f.String
-		case "elapsed_ms":
-			elapsed = f.Integer
-		case "upload":
-			upload = f.Integer
-		case "download":
-			download = f.Integer
-		case "error":
-			if err, ok := f.Interface.(error); ok && f.Type == zapcore.ErrorType && err != nil {
-				failure = err.Error()
-			} else if f.Type == zapcore.StringType {
-				failure = f.String
-			}
-		}
-	}
-	var b strings.Builder
-	if destination == "" {
-		// Other fields may carry credentials; subscribers only get the cause.
-		if id != "" {
-			b.WriteString("[" + id + "] ")
-		}
-		b.WriteString(message)
-		if failure != "" {
-			b.WriteString(": ")
-			b.WriteString(failure)
-		}
-		return b.String()
-	}
-	b.WriteString("[")
-	b.WriteString(id)
-	if elapsed >= 0 {
-		b.WriteByte(' ')
-		b.WriteString(logDuration(elapsed))
-	}
-	b.WriteString("] ")
-	b.WriteString(message)
-	b.WriteString(": ")
-	b.WriteString(network)
-	if inbound != "" {
-		b.WriteByte(' ')
-		b.WriteString(inbound)
-	}
-	if source != "" {
-		b.WriteByte(' ')
-		b.WriteString(source)
-	}
-	b.WriteString(" → ")
-	b.WriteString(destination)
-	if host, _, err := net.SplitHostPort(destination); domain != "" && (err != nil || host != domain) {
-		b.WriteString(" (")
-		b.WriteString(domain)
-		b.WriteByte(')')
-	}
-	if route != "" {
-		b.WriteString(" via ")
-		b.WriteString(route)
-		if outbound != "" && outbound != route {
-			b.WriteByte('/')
-			b.WriteString(outbound)
-		}
-	}
-	if rule != "" {
-		b.WriteString(" [")
-		b.WriteString(rule)
-		b.WriteByte(']')
-	}
-	if upload >= 0 {
-		b.WriteString(" ↑")
-		b.WriteString(logBytes(upload))
-		b.WriteString(" ↓")
-		b.WriteString(logBytes(download))
-	}
-	if failure != "" {
-		b.WriteString(": ")
-		b.WriteString(failure)
-	}
-	return b.String()
-}
-
-func logDuration(ms int64) string {
-	switch d := time.Duration(ms) * time.Millisecond; {
-	case d < time.Second:
-		return strconv.FormatInt(ms, 10) + "ms"
-	case d < time.Minute:
-		return strconv.FormatFloat(d.Seconds(), 'f', 1, 64) + "s"
-	default:
-		return d.Round(time.Second).String()
-	}
-}
-
-func logBytes(n int64) string {
-	const unit = 1024
-	if n < unit {
-		return strconv.FormatInt(n, 10) + " B"
-	}
-	value, suffix := float64(n)/unit, "KB"
-	for _, next := range []string{"MB", "GB", "TB"} {
-		if value < unit {
-			break
-		}
-		value, suffix = value/unit, next
-	}
-	return strconv.FormatFloat(value, 'f', 1, 64) + " " + suffix
 }

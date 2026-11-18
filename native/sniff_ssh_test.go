@@ -79,14 +79,7 @@ func TestSniffSSHFragmentedRoute(t *testing.T) {
 	if len(rows) != 1 || rows[0].(map[string]any)["metadata"].(map[string]any)["client"] != client {
 		t.Fatal(rows)
 	}
-	found := false
-	for _, entry := range logs.All() {
-		if entry.ContextMap()["client"] == client {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if logs.FilterMessageSnippet(", client: "+client).Len() == 0 {
 		t.Fatal("client missing from connection log")
 	}
 	wrong, err := r.Dial(context.Background(), "tcp", "192.0.2.1:22")

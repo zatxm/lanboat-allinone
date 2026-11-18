@@ -14,8 +14,6 @@ import (
 	"sync"
 	"syscall"
 	"unsafe"
-
-	"go.uber.org/zap"
 )
 
 type icmpTraceKey struct {
@@ -423,7 +421,7 @@ func (r *Runtime) startProcessTracking(needed bool) {
 			if !needed {
 				r.processes.stop(false)
 			} else if err := r.processes.start(); err != nil {
-				r.logger.Warn("ICMP process tracking incomplete", zap.Error(err))
+				logWarn(r.logger, err, "router: ICMP process tracking incomplete")
 			}
 			return
 		}

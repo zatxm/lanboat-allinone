@@ -13,8 +13,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 type SudokuReverse struct {
@@ -248,7 +246,7 @@ func (p *sudokuReverseClient) run() {
 			return
 		}
 		if err != nil && !errors.Is(err, net.ErrClosed) && !errors.Is(err, context.Canceled) {
-			p.r.logger.Debug("Sudoku reverse link ended", zap.String("outbound", p.out.Tag), zap.Error(err))
+			logDebug(p.r.logger, err, p.r.outboundLabel(p.out.Tag), ": reverse link ended")
 		}
 		if time.Since(started) >= time.Second {
 			delay = 250 * time.Millisecond

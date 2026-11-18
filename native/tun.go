@@ -15,8 +15,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 type tunFlowKey struct {
@@ -156,7 +154,7 @@ func (t *tunTunnel) start() {
 				t.platformMu.Lock()
 				if t.ctx.Err() == nil && t.refreshEgress != nil {
 					if e := t.refreshEgress(); e != nil {
-						t.runtime.logger.Warn("refresh TUN physical network", zap.Error(e))
+						logWarn(t.runtime.logger, e, "tun: refresh physical network")
 					} else if key := t.physicalNetworkKey(); key != t.networkKey {
 						t.networkKey = key
 						t.runtime.resetNetworkTransports()
@@ -169,7 +167,7 @@ func (t *tunTunnel) start() {
 					t.platformMu.Lock()
 					if t.ctx.Err() == nil {
 						if e := t.refreshRoutes(); e != nil {
-							t.runtime.logger.Warn("refresh TUN routes", zap.Error(e))
+							logWarn(t.runtime.logger, e, "tun: refresh routes")
 						}
 					}
 					t.platformMu.Unlock()

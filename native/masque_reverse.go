@@ -9,8 +9,6 @@ import (
 	"net/netip"
 	"sync"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 var errMasquePaused = errors.New("MASQUE endpoint disconnected on demand")
@@ -191,7 +189,7 @@ func (c *masqueClient) maintain() {
 			continue
 		}
 		if !errors.Is(err, errMasquePaused) && c.outbound.system && c.runtime.ctx.Err() == nil {
-			c.runtime.logger.Warn("connect MASQUE system interface", zap.String("endpoint", c.outbound.Tag), zap.Error(err))
+			logWarn(c.runtime.logger, err, c.runtime.outboundLabel(c.outbound.Tag), ": connect system interface")
 		}
 		var retry <-chan time.Time
 		var timer *time.Timer

@@ -27,8 +27,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 type TailscaleSSHOptions struct {
@@ -234,7 +232,7 @@ func (s *tsSSHServer) serve(raw net.Conn) {
 		return
 	}
 	if e = conn.auth(w); e != nil {
-		s.c.r.logger.Debug("Tailscale SSH authentication rejected", zap.Error(e))
+		logDebug(s.c.r.logger, e, "tailscale: SSH authentication rejected")
 		return
 	}
 	raw.SetDeadline(time.Time{})

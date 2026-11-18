@@ -208,13 +208,7 @@ func TestQUICClientCaptureRouting(t *testing.T) {
 			if len(rows) != 1 || rows[0].(map[string]any)["metadata"].(map[string]any)["client"] != want {
 				t.Fatal(rows)
 			}
-			matched := false
-			for _, entry := range logs.All() {
-				if entry.ContextMap()["client"] == want {
-					matched = true
-				}
-			}
-			if !matched {
+			if logs.FilterMessageSnippet(", client: "+want).Len() == 0 {
 				t.Fatal("sniffed client missing from connection log")
 			}
 		})

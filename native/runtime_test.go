@@ -387,7 +387,7 @@ func TestZapLogger(t *testing.T) {
 		t.Fatal(err)
 	}
 	logs := observed.All()
-	if len(logs) != 1 || logs[0].Message != "listener started" {
+	if len(logs) != 1 || !strings.HasPrefix(logs[0].Message, "inbound/mixed[local]: tcp server started at 127.0.0.1:") {
 		t.Fatalf("unexpected zap output: %+v", logs)
 	}
 }

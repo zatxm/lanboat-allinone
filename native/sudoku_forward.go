@@ -8,8 +8,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 // SudokuWebSocketForward exposes a public sudoku-tcp-v1 route as a local TCP port.
@@ -113,7 +111,7 @@ func (r *Runtime) ForwardSudokuWebSocket(ctx context.Context, listen, endpoint s
 				defer done()
 				raw, err := r.direct(dial, "tcp", address)
 				if err != nil {
-					r.logger.Debug("Sudoku WebSocket forward dial failed", zap.Error(err))
+					logDebug(r.logger, err, "sudoku: WebSocket forward dial")
 					return
 				}
 				defer raw.Close()
@@ -125,7 +123,7 @@ func (r *Runtime) ForwardSudokuWebSocket(ctx context.Context, listen, endpoint s
 				if config != nil {
 					secured := clientTLS(raw, config, options)
 					if err = secured.HandshakeContext(dial); err != nil {
-						r.logger.Debug("Sudoku WebSocket forward TLS failed", zap.Error(err))
+						logDebug(r.logger, err, "sudoku: WebSocket forward TLS")
 						return
 					}
 					conn = secured
@@ -133,7 +131,7 @@ func (r *Runtime) ForwardSudokuWebSocket(ctx context.Context, listen, endpoint s
 				transport := Transport{Type: "ws", Path: u.RequestURI(), Host: u.Host, websocketProtocol: sudokuTCPSubprotocol}
 				ws, err := dialTransportHandshake(conn, Outbound{Server: host, Transport: transport}, nil)
 				if err != nil {
-					r.logger.Debug("Sudoku WebSocket forward upgrade failed", zap.Error(err))
+					logDebug(r.logger, err, "sudoku: WebSocket forward upgrade")
 					return
 				}
 				done()

@@ -18,8 +18,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 func ocExporter(conn net.Conn) ([]byte, error) {
@@ -205,7 +203,7 @@ func (l *ocDTLSListener) run() {
 					l.mu.Unlock()
 					binding.tunnel.receiveDTLS(d)
 				} else {
-					l.r.logger.Debug("OpenConnect DTLS handshake unavailable", zap.Error(err))
+					logDebug(l.r.logger, err, "openconnect: DTLS handshake unavailable")
 				}
 			}(binding, peer, d)
 			l.mu.Unlock()
@@ -352,9 +350,9 @@ func (t *ocTunnel) receiveDTLS(d *ocDTLS) {
 			d.writeMu.Unlock()
 		}
 	}()
-	t.r.logger.Debug("OpenConnect DTLS channel ready", zap.Uint16("cipher_suite", d.suite))
+	logDebug(t.r.logger, nil, "openconnect: DTLS channel ready, cipher suite 0x", strconv.FormatUint(uint64(d.suite), 16))
 	defer func() {
-		t.r.logger.Debug("OpenConnect DTLS traffic", zap.Uint64("sent_ip_packets", d.sent.Load()), zap.Uint64("received_ip_packets", d.received.Load()))
+		logDebug(t.r.logger, nil, "openconnect: DTLS traffic, sent ", strconv.FormatUint(d.sent.Load(), 10), " IP packets, received ", strconv.FormatUint(d.received.Load(), 10), " IP packets")
 	}()
 	var renew time.Time
 	if t.dtlsRekeyAfter > 0 {
@@ -364,7 +362,7 @@ func (t *ocTunnel) receiveDTLS(d *ocDTLS) {
 	for {
 		if latest := d.generation.Load(); latest != generation {
 			generation = latest
-			t.r.logger.Debug("OpenConnect DTLS rekeyed", zap.Uint64("generation", latest))
+			logDebug(t.r.logger, nil, "openconnect: DTLS rekeyed, generation ", strconv.FormatUint(latest, 10))
 			if !renew.IsZero() {
 				renew = time.Now().Add(t.dtlsRekeyAfter * 9 / 10)
 			}
@@ -389,7 +387,7 @@ func (t *ocTunnel) receiveDTLS(d *ocDTLS) {
 					continue
 				}
 			}
-			t.r.logger.Debug("OpenConnect DTLS channel closed", zap.Error(err))
+			logDebug(t.r.logger, err, "openconnect: DTLS channel closed")
 			return
 		}
 		if !t.handlePacket(kind, packet, d) {
@@ -401,7 +399,7 @@ func (t *ocTunnel) receiveDTLS(d *ocDTLS) {
 func (c *ocClient) startDTLS(t *ocTunnel, headers http.Header) {
 	if c.o.DisableDTLS || !c.o.dtlsAccepted(headers) {
 		if !c.o.DisableDTLS {
-			c.r.logger.Debug("OpenConnect DTLS not negotiated", zap.String("cipher", headers.Get("X-DTLS-CipherSuite")))
+			logDebug(c.r.logger, nil, "openconnect: DTLS not negotiated, cipher ", headers.Get("X-DTLS-CipherSuite"))
 		}
 		return
 	}
@@ -412,7 +410,7 @@ func (c *ocClient) startDTLS(t *ocTunnel, headers http.Header) {
 	id, err := hex.DecodeString(headers.Get(idHeader))
 	port, e := strconv.ParseUint(headers.Get("X-DTLS-Port"), 10, 16)
 	if err != nil || e != nil || port == 0 || len(id) < 16 || len(id) > 32 {
-		c.r.logger.Debug("OpenConnect DTLS negotiation parameters invalid", zap.Int("id_bytes", len(id)), zap.Uint64("port", port))
+		logDebug(c.r.logger, nil, "openconnect: DTLS negotiation parameters invalid, id bytes ", strconv.Itoa(len(id)), ", port ", strconv.FormatUint(port, 10))
 		return
 	}
 	if n, err := strconv.Atoi(headers.Get("X-DTLS-MTU")); err == nil && n >= 576 {
@@ -468,7 +466,7 @@ func (c *ocClient) startDTLS(t *ocTunnel, headers http.Header) {
 				} else {
 					clear(d.psk)
 					raw.Close()
-					c.r.logger.Debug("OpenConnect DTLS handshake unavailable", zap.Error(err))
+					logDebug(c.r.logger, err, "openconnect: DTLS handshake unavailable")
 				}
 			} else {
 				cancel()

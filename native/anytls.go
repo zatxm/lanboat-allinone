@@ -19,8 +19,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 const defaultAnyPadding = "stop=8\n0=30-30\n1=100-400\n2=400-500,c,500-1000,c,500-1000,c,500-1000,c,500-1000\n3=9-9,500-1000\n4=500-1000\n5=500-1000\n6=500-1000\n7=500-1000"
@@ -490,7 +488,7 @@ func (s *anySession) loop(in *Inbound, q request) error {
 				defer s.handlers.Done()
 				defer stream.Close()
 				if err := s.runtime.handleAnyStream(stream, q); err != nil && s.runtime.ctx.Err() == nil {
-					s.runtime.logger.Debug("AnyTLS stream ended", zap.Error(err))
+					logDebug(s.runtime.logger, err, "anytls: stream ended")
 				}
 			}()
 		case 2:

@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"github.com/zatxm/lanboat-allinone/internal/nativecmd"
-	"go.uber.org/zap"
+	"github.com/zatxm/lanboat-allinone/native"
 )
 
 func main() {
@@ -18,10 +18,9 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	if err := nativecmd.Execute(ctx, os.Args[1:], os.Stdout); err != nil {
-		logger, logErr := zap.NewProduction()
-		if logErr == nil {
-			logger.Error("command failed", zap.Error(err))
-			_ = logger.Sync()
+		// Matches sing-box, which reports startup failures as one FATAL line.
+		if logger, _, logErr := native.NewLogger(native.LogOptions{}); logErr == nil {
+			logger.Fatal(err.Error())
 		}
 		os.Exit(1)
 	}

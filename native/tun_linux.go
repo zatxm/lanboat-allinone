@@ -15,8 +15,6 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
-
-	"go.uber.org/zap"
 )
 
 func (r *Runtime) prepareEndpointTUN() error { return nil }
@@ -71,7 +69,7 @@ func (t *tunTunnel) configureDNS() error {
 		if t.dnsMode() == "native" {
 			return errors.New("native DNS requires systemd-resolved in the current network namespace")
 		}
-		t.runtime.logger.Debug("system DNS unavailable; port53 hijack remains enabled")
+		t.runtime.logger.Debug("tun: system DNS unavailable; port53 hijack remains enabled")
 		return nil
 	}
 	args := append([]string{"dns", t.name}, t.dnsAddresses()...)
@@ -79,7 +77,7 @@ func (t *tunTunnel) configureDNS() error {
 		if t.dnsMode() == "native" {
 			return e
 		}
-		t.runtime.logger.Debug("systemd-resolved unavailable; port53 hijack remains enabled")
+		t.runtime.logger.Debug("tun: systemd-resolved unavailable; port53 hijack remains enabled")
 		return nil
 	}
 	if _, e := tunCommand("/usr/bin/resolvectl", "", args...); e != nil {
@@ -88,7 +86,7 @@ func (t *tunTunnel) configureDNS() error {
 	previous := t.cleanup
 	t.cleanup = func() {
 		if _, e := tunCommand("/usr/bin/resolvectl", "", "revert", t.name); e != nil {
-			t.runtime.logger.Warn("restore TUN DNS", zap.Error(e))
+			logWarn(t.runtime.logger, e, "tun: restore DNS")
 		}
 		if previous != nil {
 			previous()

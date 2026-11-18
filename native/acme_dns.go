@@ -17,8 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 func validACMERecord(name string) bool {
@@ -116,7 +114,7 @@ func (c *acmeClient) presentDNS(ctx context.Context, domain, authorization strin
 		call, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
 		if e := remove(call); e != nil {
-			c.p.r.logger.Warn("DNS01 challenge cleanup failed", zap.String("provider", options.Provider), zap.Error(e))
+			logWarn(c.p.r.logger, e, "certificate[", options.Provider, "]: clean up DNS01 challenge")
 		}
 	}
 	if e = c.waitTXT(ctx, name, value); e != nil {

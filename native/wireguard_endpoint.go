@@ -14,8 +14,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 type wgEndpointOptions struct {
@@ -577,7 +575,7 @@ func (e *wgEndpoint) reset(restart bool) {
 	e.mu.Unlock()
 	if restart && !e.o.OnDemand && e.r.ctx.Err() == nil {
 		if _, err := e.session(e.r.ctx); err != nil {
-			e.r.logger.Warn("WireGuard endpoint restart failed", zap.String("tag", e.o.Tag), zap.Error(err))
+			logWarn(e.r.logger, err, e.r.outboundLabel(e.o.Tag), ": restart")
 		}
 	}
 }

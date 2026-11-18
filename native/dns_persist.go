@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"go.uber.org/zap"
 	"net/netip"
 	"os"
 	"strconv"
@@ -103,6 +102,6 @@ func (r *resolver) saveFakeCache() {
 		e = saveRuleCache(path, data)
 	}
 	if e != nil {
-		r.runtime.logger.Warn("FakeIP cache save failed", zap.Error(e))
+		logWarn(r.runtime.logger, e, "dns: save FakeIP cache")
 	}
 }

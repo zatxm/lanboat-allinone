@@ -13,6 +13,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -85,15 +87,14 @@ func TestConnectionLogHTTPPrivacy(t *testing.T) {
 			if err != nil || string(body) != "ok" {
 				t.Fatal(string(body), err)
 			}
-			destination := zap.String("destination", "www.google.com:"+port)
-			in := logs.FilterMessage(logInboundConnection).FilterField(destination).All()
-			out := logs.FilterMessage(logOutboundConnection).FilterField(destination).All()
-			if len(in) != 1 || len(out) != 1 {
+			from := logs.FilterMessageSnippet("inbound/mixed[local]: inbound connection from 127.0.0.1:").All()
+			in := logs.FilterMessageSnippet("inbound/mixed[local]: inbound connection to www.google.com:" + port).All()
+			out := logs.FilterMessageSnippet("outbound/direct[direct]: outbound connection to www.google.com:" + port).All()
+			if len(from) != 1 || len(in) != 1 || len(out) != 1 {
 				t.Fatal(logs.All())
 			}
-			a, b := in[0].ContextMap(), out[0].ContextMap()
-			if a["connection_id"] != b["connection_id"] || a["destination"] != "www.google.com:"+port || a["source"] == "" || b["outbound"] != "direct" {
-				t.Fatal(a, b)
+			if id := logEntryID(t, in[0].Message); logEntryID(t, from[0].Message) != id || logEntryID(t, out[0].Message) != id {
+				t.Fatal("connection entries do not share an ID", from[0].Message, in[0].Message, out[0].Message)
 			}
 			raw, _ := json.Marshal(logs.All())
 			for _, secret := range []string{"/search", "sing-box", "query-secret", "header-secret", "body-secret", "Authorization"} {
@@ -150,7 +151,7 @@ func TestConnectionLogLevelsAndFailures(t *testing.T) {
 			if level == "info" && logs.FilterLevelExact(zapcore.DebugLevel).Len() != 0 {
 				t.Fatal("debug escaped info level")
 			}
-			if level == "debug" && logs.FilterMessage("routing rule matched").Len() != 1 {
+			if level == "debug" && logs.FilterMessageSnippet("] router: match[0] domain=reject.test => reject").Len() != 1 {
 				t.Fatal("missing rule match")
 			}
 		})
@@ -177,13 +178,8 @@ func TestConnectionLogUDPAndSelector(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	entries := logs.FilterMessage(logOutboundConnection).FilterField(zap.String("destination", target)).All()
-	if len(entries) != 1 {
+	if logs.FilterMessageSnippet("outbound/direct[one]: outbound packet connection to "+target).Len() != 1 || logs.FilterMessageSnippet("outbound/").Len() != 1 {
 		t.Fatal("UDP logged per packet instead of per session", logs.All())
-	}
-	fields := entries[0].ContextMap()
-	if fields["network"] != "udp" || fields["outbound"] != "one" || fields["route_outbound"] != "pick" {
-		t.Fatal(fields)
 	}
 	// Do not embed the HTTP transport's URL (query may contain credentials).
 	r.logConnection(request{address: target}, "pick", nil, &url.Error{Op: "Get", URL: "https://private.test/path?secret=secret", Err: errors.New("transport failed")}, false)
@@ -194,40 +190,53 @@ func TestConnectionLogUDPAndSelector(t *testing.T) {
 }
 
 func TestConnectionLogFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "connection.log")
-	cfg := Config{Log: LogOptions{Level: "info", Output: path}}
-	raw, _ := json.Marshal(cfg)
-	r, err := New(context.Background(), raw, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer r.Close()
-	if err := r.Start(); err != nil {
-		t.Fatal(err)
-	}
-	c, err := r.Dial(context.Background(), "tcp", sudokuTCPEcho(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	c.Close()
-	r.Close()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	lines := bytes.Split(bytes.TrimSpace(data), []byte{'\n'})
-	if len(lines) != 2 {
-		t.Fatal(string(data))
-	}
-	for _, line := range lines {
-		var v map[string]any
-		if err := json.Unmarshal(line, &v); err != nil || v["connection_id"] == nil || v["destination"] == nil {
-			t.Fatal(string(line), err)
+	for _, timestamp := range []bool{false, true} {
+		path := filepath.Join(t.TempDir(), "connection.log")
+		cfg := Config{Log: LogOptions{Level: "info", Output: path, Timestamp: timestamp}}
+		raw, _ := json.Marshal(cfg)
+		r, err := New(context.Background(), raw, nil)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if at, _ := v["time"].(string); at == "" {
-			t.Fatal(string(line), err)
+		if err := r.Start(); err != nil {
+			t.Fatal(err)
+		}
+		target := sudokuTCPEcho(t)
+		c, err := r.Dial(context.Background(), "tcp", target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Close()
+		r.Close()
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		prefix := `^INFO `
+		if timestamp {
+			prefix = `^[+-]\d{4} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} INFO `
+		}
+		want := regexp.MustCompile(prefix + `\[1 \d+ms\] (inbound: inbound|outbound/direct\[direct\]: outbound) connection to ` + regexp.QuoteMeta(target) + `$`)
+		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+		if len(lines) != 2 {
+			t.Fatal(string(data))
+		}
+		for _, line := range lines {
+			if !want.MatchString(line) {
+				t.Fatal(line)
+			}
 		}
 	}
+}
+
+// logEntryID returns the connection ID of a "[id elapsed] ..." message.
+func logEntryID(t *testing.T, message string) string {
+	t.Helper()
+	id, _, ok := strings.Cut(strings.TrimPrefix(message, "["), " ")
+	if !ok || !strings.HasPrefix(message, "[") {
+		t.Fatal("missing connection prefix", message)
+	}
+	return id
 }
 
 func TestConnectionLoggerEvents(t *testing.T) {
@@ -257,17 +266,17 @@ func TestConnectionLoggerEvents(t *testing.T) {
 	if opened.Event != ConnectionOpened || closed.Event != ConnectionClosed || rejected.Event != ConnectionFailed {
 		t.Fatal(events)
 	}
-	if opened.ID == 0 || closed.ID != opened.ID || opened.Destination != target || opened.Rule != "#1 IPCIDR(127.0.0.1/32)" || opened.Outbound != "direct" {
+	if opened.ID == 0 || closed.ID != opened.ID || opened.Destination != target || opened.Rule != "ip_cidr=127.0.0.1/32" || opened.Outbound != "direct" {
 		t.Fatal(opened, closed)
 	}
 	if closed.Upload == 0 || closed.Upload != closed.Download || closed.Elapsed < opened.Elapsed || closed.Error != nil {
 		t.Fatal(closed)
 	}
-	if rejected.Outbound != "REJECT" || rejected.Rule != "#0 Domain(reject.test)" || !errors.Is(rejected.Error, ErrRejected) {
+	if rejected.Outbound != "REJECT" || rejected.Rule != "domain=reject.test" || !errors.Is(rejected.Error, ErrRejected) {
 		t.Fatal(rejected)
 	}
-	entries := logs.FilterMessage(logConnectionClosed).All()
-	if len(entries) != 1 || entries[0].Level != zapcore.DebugLevel || entries[0].ContextMap()["upload"] != closed.Upload {
+	entries := logs.FilterMessageSnippet("] connection: connection closed (upload ").All()
+	if len(entries) != 1 || entries[0].Level != zapcore.DebugLevel || logEntryID(t, entries[0].Message) != strconv.FormatUint(closed.ID, 10) {
 		t.Fatal(entries)
 	}
 }
@@ -291,17 +300,39 @@ func TestConnectionLoggerWithoutZapOrCloseEvents(t *testing.T) {
 	}
 }
 
-func TestConnectionLogText(t *testing.T) {
-	event := ConnectionLog{Event: ConnectionClosed, ID: 7, Network: "tcp", Inbound: "mixed", Source: "127.0.0.1:5000", Destination: "1.2.3.4:443", Domain: "example.com", RouteOutbound: "proxy", Outbound: "hk", Rule: "#2 DomainSuffix(example.com)", Elapsed: 12345 * time.Millisecond, Upload: 1536, Download: 3 << 20, Error: errors.New("reset")}
-	want := "[7 12.3s] connection closed: tcp mixed 127.0.0.1:5000 → 1.2.3.4:443 (example.com) via proxy/hk [#2 DomainSuffix(example.com)] ↑1.5 KB ↓3.0 MB: reset"
-	if got := logText(logConnectionClosed, event.fields()); got != want {
-		t.Fatalf("got  %s\nwant %s", got, want)
+func TestLogFormat(t *testing.T) {
+	for d, want := range map[time.Duration]string{38 * time.Millisecond: "38ms", 1050 * time.Millisecond: "1.05s", 75 * time.Second: "1m15s"} {
+		if got := formatLogDuration(d); got != want {
+			t.Fatal(d, got)
+		}
 	}
-	if got := logText("routing rule matched", []zap.Field{zap.Uint64("connection_id", 7), zap.String("password", "secret")}); got != "[7] routing rule matched" {
+	rule := Rule{Type: "logical", Mode: "or", Invert: true, Action: "route", Outbound: "proxy", Rules: []Rule{{DomainSuffix: []string{"a.test", "b.test"}}, {Port: []uint16{443}, IPIsPrivate: true}}}
+	if got := newRuleLogs([]Rule{rule})[0].match; got != "match[0] !((domain_suffix=[a.test b.test] || port=443 ip_is_private)) => route(proxy)" {
 		t.Fatal(got)
 	}
-	if got := logText("dial failed", []zap.Field{zap.String("token", "secret"), zap.Error(errors.New("timeout"))}); got != "dial failed: timeout" {
-		t.Fatal(got)
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.FixedZone("", 8*3600))
+	entry := zapcore.Entry{Level: zapcore.WarnLevel, Time: at, Message: "[42 5ms] router: lookup failed"}
+	for _, c := range []struct {
+		encoder *logEncoder
+		want    string
+	}{
+		{newLogEncoder(true, true, false), "+0800 2026-01-02 03:04:05 WARN [42 5ms] router: lookup failed\n"},
+		{newLogEncoder(false, true, false), "WARN [42 5ms] router: lookup failed\n"},
+		{&logEncoder{Encoder: newLogEncoder(false, false, false).Encoder, start: at.Add(-12 * time.Second)}, "WARN[0012] [42 5ms] router: lookup failed\n"},
+	} {
+		line, err := c.encoder.EncodeEntry(entry, nil)
+		if err != nil || line.String() != c.want {
+			t.Fatalf("%q %v", line.String(), err)
+		}
+	}
+	named := entry
+	named.LoggerName, named.Message = "http2", "TLS handshake error"
+	line, _ := newLogEncoder(false, true, false).EncodeEntry(named, []zapcore.Field{zap.Int("extra", 1)})
+	if line.String() != "WARN http2: TLS handshake error {\"extra\":1}\n" {
+		t.Fatal(line.String())
+	}
+	if got := colorLogID("[42 5ms] x"); got != "[\x1b[38;5;189m42\x1b[0m 5ms] x" {
+		t.Fatalf("%q", got)
 	}
 }
 

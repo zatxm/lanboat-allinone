@@ -16,8 +16,6 @@ import (
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
-
-	"go.uber.org/zap"
 )
 
 type tsSSHRecordingAttempt struct {
@@ -190,7 +188,7 @@ func (r *tsSSHRecording) fail(e error, initial bool) {
 		if fatal {
 			r.stopProcess()
 		}
-		r.conn.server.c.r.logger.Debug("Tailscale SSH recording failed", zap.Error(e))
+		logDebug(r.conn.server.c.r.logger, e, "tailscale: SSH recording failed")
 		r.conn.recordingFailure(initial, r.attempts)
 	})
 }

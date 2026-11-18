@@ -13,8 +13,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 type quicProxyClient struct {
@@ -340,7 +338,7 @@ func (r *Runtime) acceptQUIC(in Inbound, l *quicEndpoint) {
 				e = r.serveQUICProxy(in, c)
 			}
 			if e != nil && r.ctx.Err() == nil {
-				r.logger.Debug("QUIC session ended", zap.String("inbound", in.Tag), zap.Error(e))
+				logDebug(r.logger, e, r.inboundLabel(in.Tag), ": QUIC session ended")
 			}
 		}()
 	}
@@ -394,7 +392,7 @@ func (r *Runtime) serveQUICProxy(in Inbound, c *quicConn) error {
 			stream.SetDeadline(time.Now().Add(handshakeTimeout))
 			e := s.serveStream(r, in, stream, authenticated, &authOnce)
 			if e != nil && c.ctx.Err() == nil {
-				r.logger.Debug("QUIC request failed", zap.String("inbound", in.Tag), zap.Error(e))
+				logDebug(r.logger, e, r.inboundLabel(in.Tag), ": QUIC request failed")
 			}
 		}()
 	}

@@ -38,6 +38,8 @@ type LogOptions struct {
 	Disabled bool   `json:"disabled,omitempty"`
 	Level    string `json:"level,omitempty"`
 	Output   string `json:"output,omitempty"`
+	// Timestamp prefixes each line with the local time, as in sing-box.
+	Timestamp bool `json:"timestamp,omitempty"`
 }
 
 type User struct {

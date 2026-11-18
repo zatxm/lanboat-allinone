@@ -13,8 +13,6 @@ import (
 	"slices"
 	"sync"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 const genericMuxAddress = "sp.mux.sing-box.arpa:444"
@@ -341,7 +339,7 @@ func (p *genericMuxClient) newSession(ctx context.Context, raw net.Conn) (generi
 		}
 		send := min(uint64(options.Brutal.UpMbps)*125000, binary.BigEndian.Uint64(reply[1:]))
 		if err = setTCPBrutal(raw, send); err != nil {
-			p.runtime.logger.Debug("TCP Brutal client kernel unavailable; server remains enabled", zap.Error(err))
+			logDebug(p.runtime.logger, err, "mux: TCP Brutal client kernel unavailable; server remains enabled")
 		}
 	}
 	raw.SetDeadline(time.Time{})

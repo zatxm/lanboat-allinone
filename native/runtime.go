@@ -31,7 +31,8 @@ type Runtime struct {
 	dnsLogDrops              atomic.Uint64
 	connectionLogger         atomic.Pointer[connectionLogger]
 	connectionLogDrops       atomic.Uint64
-	ruleLabels               []string
+	ruleLogs                 []ruleLog
+	inboundLabels            map[string]string
 	logQueues                sync.WaitGroup
 	logQueueMu               sync.Mutex
 	logQueuesClosed          bool
@@ -153,8 +154,8 @@ func New(ctx context.Context, raw []byte, logger *zap.Logger) (*Runtime, error) 
 		if cfg.Log.Disabled {
 			logger = zap.NewNop()
 		} else if cfg.Log.Level != "" {
-			var level zapcore.Level
-			if err := level.UnmarshalText([]byte(cfg.Log.Level)); err != nil {
+			level, err := parseLogLevel(cfg.Log.Level)
+			if err != nil {
 				return nil, err
 			}
 			if logger.Core().Enabled(level) {
@@ -163,35 +164,9 @@ func New(ctx context.Context, raw []byte, logger *zap.Logger) (*Runtime, error) 
 		}
 	}
 	if logger == nil {
-		if cfg.Log.Disabled {
-			logger = zap.NewNop()
-		} else {
-			level := zap.NewAtomicLevelAt(zap.InfoLevel)
-			if cfg.Log.Level != "" {
-				if err := level.UnmarshalText([]byte(cfg.Log.Level)); err != nil {
-					return nil, err
-				}
-			}
-			output := cfg.Log.Output
-			if output == "" {
-				output = "stderr"
-			}
-			writer, release, openErr := zap.Open(output)
-			err = openErr
-			if err != nil {
-				return nil, err
-			}
-			stop := func() {}
-			if output != "stdout" && output != "stderr" {
-				// File logs batch writes instead of one locked syscall per entry;
-				// Close flushes, and entries reach disk within a second otherwise.
-				buffered := &zapcore.BufferedWriteSyncer{WS: writer, Size: 256 << 10, FlushInterval: time.Second}
-				writer, stop = buffered, func() { _ = buffered.Stop() }
-			}
-			encoder := zap.NewProductionEncoderConfig()
-			encoder.TimeKey, encoder.EncodeTime = "time", zapcore.ISO8601TimeEncoder
-			logger = zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(encoder), writer, level))
-			closeLogger = func() { _ = logger.Sync(); stop(); release() }
+		logger, closeLogger, err = NewLogger(cfg.Log)
+		if err != nil {
+			return nil, err
 		}
 	}
 	// Parent cancellation enters Close's bounded cleanup before cancelling
@@ -201,6 +176,10 @@ func New(ctx context.Context, raw []byte, logger *zap.Logger) (*Runtime, error) 
 		cfg.Inbounds = append(cfg.Inbounds, Inbound{Type: "dns", Tag: s.Tag, Listen: s.Listen, ListenPort: s.ListenPort})
 	}
 	r := &Runtime{config: cfg, ctx: child, cancel: cancel, logger: logger, closeLogger: closeLogger, listeners: map[string]net.Listener{}, connections: map[net.Conn]struct{}{}, outbounds: map[string]Outbound{}, clientTLS: map[string]*tls.Config{}, serverTLS: map[string]*tls.Config{}, keys: map[string]*ssKey{}}
+	r.inboundLabels = make(map[string]string, len(cfg.Inbounds))
+	for _, in := range cfg.Inbounds {
+		r.inboundLabels[in.Tag] = "inbound/" + in.Type + "[" + in.Tag + "]"
+	}
 	for _, in := range cfg.Inbounds {
 		if in.UDPTimeout != "" {
 			if r.udpTimeouts == nil {
@@ -513,7 +492,7 @@ func New(ctx context.Context, raw []byte, logger *zap.Logger) (*Runtime, error) 
 		}
 	}
 	r.rules, _ = compileRoute(cfg.Route, r.outbounds, r.ruleSets)
-	r.ruleLabels = newRuleLabels(cfg.Route.Rules)
+	r.ruleLogs = newRuleLogs(cfg.Route.Rules)
 	r.resolver, err = newResolver(cfg.DNS, r)
 	if err != nil {
 		return nil, err
@@ -897,7 +876,7 @@ func (r *Runtime) Start() error {
 				}
 			}()
 		}
-		r.logger.Info("listener started", zap.String("inbound", in.Tag), zap.String("protocol", in.Type), zap.String("address", listener.Addr().String()))
+		logInfo(r.logger, nil, r.inboundLabel(in.Tag), ": ", listener.Addr().Network(), " server started at ", listener.Addr().String())
 	}
 	for _, c := range r.masqueClients {
 		if len(c.outbound.routes) != 0 || c.outbound.system {
@@ -1189,8 +1168,9 @@ func (r *Runtime) accept(in Inbound, listener net.Listener) {
 						_ = tcp.SetLinger(0)
 					}
 				}
-				if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) && r.ctx.Err() == nil {
-					r.logger.Debug("session ended", zap.String("inbound", in.Tag), zap.Error(err))
+				// The router already logged rejected connections.
+				if !errors.Is(err, io.EOF) && !closedOrRejected(err) && r.ctx.Err() == nil {
+					logDebug(r.logger, err, r.inboundLabel(in.Tag), ": process connection from ", c.RemoteAddr().String())
 				}
 			}
 		}()
@@ -1215,7 +1195,7 @@ var relaySmallBuffers = sync.Pool{New: func() any { return new([2048]byte) }}
 func (r *Runtime) relay(a, b net.Conn) {
 	if target, ok := b.(*genericMuxTarget); ok {
 		if err := r.serveGenericMux(a, target.request, target.options); err != nil {
-			r.logger.Debug("multiplex connection closed", zap.Error(err))
+			logDebug(r.logger, err, "mux: connection closed")
 		}
 		return
 	}
@@ -1226,7 +1206,7 @@ func (r *Runtime) relay(a, b net.Conn) {
 	copyOne := func(dst, src net.Conn, counter *atomic.Int64) {
 		err := copyRelay(dst, src, counter)
 		if err != nil {
-			r.logger.Debug("proxy relay failed", zap.Error(err))
+			logDebug(r.logger, err, "connection: relay failed")
 			a.Close()
 			b.Close()
 		} else if half, ok := dst.(interface{ CloseWrite() error }); ok {

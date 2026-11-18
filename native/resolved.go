@@ -147,7 +147,7 @@ func (s *resolvedService) start() error {
 			s.publish()
 			s.mu.Unlock()
 			if s.owner.ctx.Err() == nil {
-				s.owner.logger.Warn("resolved D-Bus disconnected")
+				s.owner.logger.Warn("service/resolved: D-Bus disconnected")
 			}
 		}()
 		active := make(chan struct{}, 16)

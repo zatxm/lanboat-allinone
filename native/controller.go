@@ -126,7 +126,9 @@ func newController(r *Runtime, o ControllerOptions) *controller {
 	}
 	c.logLevel = zapcore.InfoLevel
 	if r.config.Log.Level != "" {
-		_ = c.logLevel.UnmarshalText([]byte(r.config.Log.Level))
+		if level, err := parseLogLevel(r.config.Log.Level); err == nil {
+			c.logLevel = level
+		}
 	}
 	c.readOnly = server && !client
 	if o.ReadOnly != nil {
@@ -569,8 +571,11 @@ func (l *controllerLogCore) Check(e zapcore.Entry, check *zapcore.CheckedEntry) 
 	return check
 }
 func (l *controllerLogCore) Sync() error { return nil }
-func (l *controllerLogCore) Write(e zapcore.Entry, fields []zapcore.Field) error {
-	message := logText(e.Message, fields)
+func (l *controllerLogCore) Write(e zapcore.Entry, _ []zapcore.Field) error {
+	message := e.Message
+	if e.LoggerName != "" {
+		message = withLogTag(message, e.LoggerName)
+	}
 	if len(message) > 4096 {
 		message = message[:4096]
 	}

@@ -22,8 +22,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 type TailscaleOptions struct {
@@ -467,7 +465,7 @@ func (c *tailscaleClient) run() {
 			c.fail(err)
 			return
 		}
-		c.r.logger.Warn("Tailscale control reconnect", zap.String("tag", c.o.Tag), zap.Error(err))
+		logWarn(c.r.logger, err, c.r.outboundLabel(c.o.Tag), ": control reconnect")
 		timer := time.NewTimer(delay)
 		select {
 		case <-c.ctx.Done():

@@ -22,8 +22,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 var errTSAuth = errors.New("Tailscale authentication failed or requires device approval")
@@ -300,7 +298,7 @@ func (c *tailscaleClient) controlSession() error {
 		c.authURL = result.AuthURL
 		c.mu.Unlock()
 		if changed {
-			c.r.logger.Info("Tailscale login required", zap.String("tag", c.o.Tag), zap.String("url", result.AuthURL))
+			logInfo(c.r.logger, nil, c.r.outboundLabel(c.o.Tag), ": login required: ", result.AuthURL)
 		}
 		select {
 		case c.authChanged <- struct{}{}:

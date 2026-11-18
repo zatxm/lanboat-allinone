@@ -6,8 +6,6 @@ import (
 	"io"
 	"net"
 	"sync"
-
-	"go.uber.org/zap"
 )
 
 // RelayForward forwards a remote bound port to a target on this client.
@@ -61,7 +59,7 @@ func (r *Runtime) ForwardRelay(ctx context.Context, tag, network, address, targe
 				cancelDial()
 				if err != nil {
 					peer.Close()
-					r.logger.Debug("Relay forward target failed", zap.String("target", target), zap.Error(err))
+					logDebug(r.logger, err, "relay: forward to ", target)
 					continue
 				}
 				workers.Go(func() {

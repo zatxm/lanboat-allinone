@@ -601,10 +601,10 @@ func testOpenConnectReferenceNamespace(t *testing.T, dtls, otp, noEtM bool, ciph
 			}
 			defer conn.Close()
 			deadline := time.Now().Add(7 * time.Second)
-			for rekeyLogs.FilterMessage("OpenConnect CSTP rekeyed").Len() < 2 && time.Now().Before(deadline) {
+			for rekeyLogs.FilterMessageSnippet("openconnect: CSTP rekeyed").Len() < 2 && time.Now().Before(deadline) {
 				time.Sleep(20 * time.Millisecond)
 			}
-			if rekeyLogs.FilterMessage("OpenConnect CSTP rekeyed").Len() < 2 {
+			if rekeyLogs.FilterMessageSnippet("openconnect: CSTP rekeyed").Len() < 2 {
 				t.Fatal("official client did not complete two CSTP rekeys")
 			}
 			wgRoundtripTCP(t, conn)

@@ -12,8 +12,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 type controllerDelay struct {
@@ -410,7 +408,7 @@ func (c *controller) serveClient(w http.ResponseWriter, req *http.Request) {
 					return
 				}
 				c.setMode(mode)
-				c.r.logger.Info("controller mode changed", zap.String("mode", c.modeName()))
+				logInfo(c.r.logger, nil, "clash-api: updated mode: ", c.modeName())
 			}
 			w.WriteHeader(204)
 		default:
@@ -553,7 +551,7 @@ func (c *controller) serveClient(w http.ResponseWriter, req *http.Request) {
 				controllerError(w, 400, err.Error())
 				return
 			}
-			c.r.logger.Info("controller selector changed", zap.String("group", name), zap.String("member", body.Name))
+			logInfo(c.r.logger, nil, "clash-api: ", name, " selected ", body.Name)
 			w.WriteHeader(204)
 		case "DELETE":
 			controllerError(w, 400, "Must be a Selector")

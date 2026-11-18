@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"go.uber.org/zap"
 	"net"
 	"os"
 	"strconv"
@@ -99,7 +98,7 @@ func (q *tunQueue) run() {
 		n, e := q.file.Read(buffer)
 		if e != nil {
 			if !errors.Is(e, os.ErrClosed) {
-				q.tunnel.runtime.logger.Warn("read TUN pre-match queue", zap.Error(e))
+				logWarn(q.tunnel.runtime.logger, e, "tun: read pre-match queue")
 			}
 			return
 		}
@@ -108,7 +107,7 @@ func (q *tunQueue) run() {
 		clear(buffer[n:aligned])
 		messages, e := syscall.ParseNetlinkMessage(buffer[:aligned])
 		if e != nil {
-			q.tunnel.runtime.logger.Warn("parse TUN pre-match queue", zap.Error(e))
+			logWarn(q.tunnel.runtime.logger, e, "tun: parse pre-match queue")
 			continue
 		}
 		for _, m := range messages {
@@ -162,7 +161,7 @@ func (q *tunQueue) run() {
 			packet := nfQueueMessage(1, q.number, 1, 0, nlAttribute(2, header), nfQueueU32(3, mark))
 			if _, e = q.file.Write(packet); e != nil {
 				if !errors.Is(e, os.ErrClosed) {
-					q.tunnel.runtime.logger.Warn("send TUN pre-match verdict", zap.Error(e))
+					logWarn(q.tunnel.runtime.logger, e, "tun: send pre-match verdict")
 				}
 				return
 			}

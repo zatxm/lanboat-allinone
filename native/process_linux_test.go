@@ -216,14 +216,7 @@ func TestProcessProxyRouting(t *testing.T) {
 			if err != nil || string(body) != "routed" {
 				t.Fatal(string(body), err)
 			}
-			found := false
-			for _, entry := range logs.All() {
-				m := entry.ContextMap()
-				if m["process_path"] == path && m["outbound"] == "direct" {
-					found = true
-				}
-			}
-			if !found {
+			if logs.FilterMessageSnippet("router: found process path: "+path).Len() == 0 || logs.FilterMessageSnippet("outbound/direct[direct]: outbound connection to").Len() == 0 {
 				t.Fatal("missing discovered process in connection log", logs.All())
 			}
 		})

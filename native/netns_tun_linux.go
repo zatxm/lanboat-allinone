@@ -12,8 +12,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 type namespaceTUNInfo struct {
@@ -228,7 +226,7 @@ func (n *networkNamespace) openTUN(r *Runtime, in Inbound) (*tunTunnel, error) {
 		_, extra, err := n.call(ctx, namespaceRequest{Op: "tun-close", ID: info.ID})
 		closeNamespaceFiles(extra)
 		if err != nil && r.ctx.Err() == nil {
-			r.logger.Warn("remove namespace TUN", zap.Error(err))
+			logWarn(r.logger, err, "tun: remove namespace interface")
 		}
 	}
 	defer func() {

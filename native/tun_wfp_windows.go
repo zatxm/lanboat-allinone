@@ -7,10 +7,9 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strconv"
 	"syscall"
 	"unsafe"
-
-	"go.uber.org/zap"
 )
 
 type wfpDisplay struct{ Name, Description *uint16 }
@@ -123,7 +122,7 @@ func (t *tunTunnel) blockDNSLeak() error {
 	t.cleanup = func() {
 		code, _, _ := dll.NewProc("FwpmEngineClose0").Call(uintptr(engine))
 		if code != 0 {
-			t.runtime.logger.Warn("restore TUN DNS filters", zap.Uint64("code", uint64(code)))
+			logWarn(t.runtime.logger, nil, "tun: restore DNS filters: code ", strconv.FormatUint(uint64(code), 10))
 		}
 		previous()
 	}

@@ -15,8 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 const dnsStoreLimit = 64 << 20
@@ -257,7 +255,7 @@ func (r *resolver) saveDNSCache(force bool) {
 	}
 	r.mu.Unlock()
 	if e := r.writeDNSCache(path, entries); e != nil {
-		r.runtime.logger.Warn("DNS cache save failed", zap.Error(e))
+		logWarn(r.runtime.logger, e, "dns: save cache")
 		return
 	}
 	r.mu.Lock()

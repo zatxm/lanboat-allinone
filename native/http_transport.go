@@ -358,7 +358,7 @@ func (r *Runtime) newHTTPServer(in Inbound) *http.Server {
 			conn = &grpcConn{Conn: c}
 		}
 		if err := r.serveProtocol(in, conn, req.RemoteAddr); err != nil && !errors.Is(err, io.EOF) && r.ctx.Err() == nil {
-			r.logger.Debug("HTTP/2 stream ended", zap.String("inbound", in.Tag), zap.Error(err))
+			logDebug(r.logger, err, r.inboundLabel(in.Tag), ": HTTP/2 stream ended")
 		}
 		c.Close()
 	})

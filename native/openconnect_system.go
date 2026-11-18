@@ -13,8 +13,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 func (o OpenConnectOptions) routeHeaders() http.Header {
@@ -217,7 +215,7 @@ func (c *ocClient) runSystem() {
 			if c.r.ctx.Err() != nil {
 				return
 			}
-			c.r.logger.Warn("OpenConnect connection failed", zap.String("tag", c.o.Tag), zap.Error(err))
+			logWarn(c.r.logger, err, c.r.outboundLabel(c.o.Tag), ": connection failed")
 			if ocSystemRetryable(err) {
 				if !c.waitSystemRetry(retry) {
 					return

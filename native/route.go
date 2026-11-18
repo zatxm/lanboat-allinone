@@ -669,6 +669,7 @@ func (r *Runtime) routeTarget(ctx context.Context, q request) (request, string, 
 	r.enrichNetworkMetadata(ctx, &q.metadata)
 	r.enrichProcess(ctx, &q)
 	r.enrichNeighbor(ctx, &q)
+	r.logMetadata(&q)
 	if q.metadata.ProcessName != "" || q.metadata.ProcessPath != "" || q.metadata.UserID != nil || q.metadata.User != "" || q.metadata.SourceMACAddress != "" || q.metadata.SourceHostname != "" {
 		ctx = WithMetadata(ctx, q.metadata)
 	}
@@ -730,7 +731,7 @@ func (r *Runtime) routeTarget(ctx context.Context, q request) (request, string, 
 			continue
 		}
 		o := rule.rule
-		r.logRule(q, i, o)
+		r.logRule(&q, i)
 		q.logRule = int32(i + 1)
 		switch o.Action {
 		case "bypass":
@@ -757,6 +758,7 @@ func (r *Runtime) routeTarget(ctx context.Context, q request) (request, string, 
 			if domain != "" {
 				q.metadata.Domain = domain
 			}
+			r.logSniff(&q)
 			continue
 		case "resolve":
 			resolved, err := r.resolveRoute(ctx, q, o)

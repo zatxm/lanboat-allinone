@@ -9,8 +9,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 type managedCertificate struct {
@@ -164,7 +162,7 @@ func (p *managedCertificate) refresh(ctx context.Context, cancel context.CancelF
 	closed := p.closed
 	p.mu.Unlock()
 	if err != nil && !closed && p.r.ctx.Err() == nil {
-		p.r.logger.Warn("certificate renewal failed", zap.String("provider", p.options.Tag), zap.Error(err))
+		logWarn(p.r.logger, err, "certificate[", p.options.Tag, "]: renew")
 	}
 }
 

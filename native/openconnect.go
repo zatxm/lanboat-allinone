@@ -15,8 +15,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 type OpenConnectOptions struct {
@@ -430,7 +428,7 @@ func (t *ocTunnel) start() { t.startSystem(); go t.run() }
 func (t *ocTunnel) run() {
 	if secured := ocCSTPTLS(t.conn); secured != nil {
 		secured.onRekey = func(generation uint64) {
-			t.r.logger.Debug("OpenConnect CSTP rekeyed", zap.Uint64("generation", generation))
+			logDebug(t.r.logger, nil, "openconnect: CSTP rekeyed, generation ", strconv.FormatUint(generation, 10))
 		}
 		if !t.server && t.rekeyMethod == "ssl" {
 			secured.scheduleRekey(t.rekeyAfter * 9 / 10)
@@ -492,7 +490,7 @@ func (t *ocTunnel) run() {
 	for {
 		kind, packetBytes, e := ocReadFrame(t.reader, b)
 		if e != nil {
-			t.r.logger.Debug("OpenConnect CSTP channel closed", zap.Error(e))
+			logDebug(t.r.logger, e, "openconnect: CSTP channel closed")
 			return
 		}
 		if !t.handlePacket(kind, packetBytes, nil) {

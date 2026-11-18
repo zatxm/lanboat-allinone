@@ -20,8 +20,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 type DNSConfig struct {
@@ -417,7 +415,7 @@ func newResolver(config DNSConfig, owner ...*Runtime) (*resolver, error) {
 		r.wireCache = map[string]*list.Element{}
 		r.wireLRU = nil
 		r.reverse = map[netip.Addr]fakeEntry{}
-		r.runtime.logger.Warn("DNS cache ignored", zap.Error(err))
+		logWarn(r.runtime.logger, err, "dns: ignore cache")
 	}
 	r.networkTags = dnsNetworkTags(append(append([]Rule{}, route.Rules...), dnsConditions(config.Rules)...))
 	r.preferredTags = dnsPreferredTags(dnsConditions(config.Rules))

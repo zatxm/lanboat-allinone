@@ -79,7 +79,7 @@ func (c *tailscaleClient) startPeerAPI() error {
 	rand.Read(b[:])
 	a := &tsPeerAPI{c: c, port: 20000 + binary.BigEndian.Uint16(b[:])%40000, root: root, listener: &tsPeerListener{connections: make(chan net.Conn), done: make(chan struct{})}, slots: make(chan struct{}, 4), active: map[string]bool{}}
 	a.dnsSlots = make(chan struct{}, 32)
-	a.server = &http.Server{Handler: a, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16384, ErrorLog: zap.NewStdLog(c.r.logger.With(zap.String("tag", c.o.Tag)))}
+	a.server = &http.Server{Handler: a, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16384, ErrorLog: zap.NewStdLog(c.r.logger.Named(c.r.outboundLabel(c.o.Tag) + "/taildrop"))}
 	c.peerAPI = a
 	c.spawn(func() { _ = a.server.Serve(a.listener) })
 	return nil
@@ -296,7 +296,7 @@ func (a *tsPeerAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.root.Remove(base + ".name")
 	a.root.Remove(dir)
 	a.mu.Unlock()
-	a.c.r.logger.Info("Tailscale file received", zap.String("tag", a.c.o.Tag), zap.String("name", name))
+	logInfo(a.c.r.logger, nil, a.c.r.outboundLabel(a.c.o.Tag), ": file received: ", name)
 	io.WriteString(w, "{}\n")
 }
 

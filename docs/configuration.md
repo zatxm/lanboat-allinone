@@ -25,14 +25,24 @@
 ## 日志
 
 ```json
-{"log":{"level":"info","output":"./logs/lanboat.log"}}
+{"log":{"level":"info","output":"./logs/lanboat.log","timestamp":true}}
 ```
 
-将此片段合并到配置顶层，先创建日志目录，例如`mkdir -p logs`。省略`output`时日志输出到终端；`disabled: true`关闭日志。排障时临时将`level`改为`debug`，完成后恢复`info`。
+将此片段合并到配置顶层，先创建日志目录，例如`mkdir -p logs`。省略`output`时日志输出到终端；`disabled: true`关闭日志；`level`可选`trace`、`debug`、`info`、`warn`、`error`、`fatal`、`panic`（`trace`等同`debug`）；`timestamp: true`在每行前加本地时间。排障时临时将`level`改为`debug`，完成后恢复`info`。
 
 连接日志主要用于记录协议、目标地址、出站和错误；HTTPS通常只能识别目标主机，不能读取加密的网页路径或请求正文。诊断日志可能包含目标域名、IP等信息，分享前请脱敏。
 
-日志为每行一条JSON，`time`为ISO8601时间。连接日志的`msg`固定为`inbound connection`、`outbound connection`、`connection failed`，`debug`级别另有`connection closed`（含`upload`、`download`字节数），变化内容都在字段中：同一连接的各条日志共享`connection_id`，`elapsed_ms`为从入站接受起的毫秒数，`rule`为命中的路由规则（未命中为`final`）。Clash API的`/logs`以`[连接ID 耗时] 消息: 网络 入站 来源 → 目标 via 出站`的文本形式输出这些连接日志。
+日志格式与sing-box一致，每行一条文本，终端、日志文件和Clash API的`/logs`内容相同（`/logs`不含时间和级别前缀）：
+
+```text
++0800 2026-11-18 17:29:28 INFO [1 0ms] inbound/mixed[mixed-in]: inbound connection from 127.0.0.1:7798
++0800 2026-11-18 17:29:28 INFO [1 0ms] inbound/mixed[mixed-in]: inbound connection to example.com:443
++0800 2026-11-18 17:29:28 DEBUG [1 0ms] router: match[1] domain_suffix=example.com => route(proxy)
++0800 2026-11-18 17:29:28 INFO [1 38ms] outbound/vless[proxy]: outbound connection to example.com:443
++0800 2026-11-18 17:29:40 DEBUG [1 12.30s] connection: connection closed (upload 1.5 KB, download 3.0 MB)
+```
+
+`[1 38ms]`为连接ID和从入站接受起的耗时，同一连接的各行共享ID。未设置`timestamp`时，终端输出为`INFO[0012]`（启动后的秒数），文件输出只有级别。终端支持颜色时级别和连接ID会着色，设置环境变量`NO_COLOR`可关闭。
 
 ## 文件与持久化
 

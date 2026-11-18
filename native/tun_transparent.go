@@ -2,7 +2,6 @@ package native
 
 import (
 	"context"
-	"go.uber.org/zap"
 )
 
 func (t *tunTunnel) serveTransparent() {
@@ -27,7 +26,7 @@ func (t *tunTunnel) serveTransparent() {
 			ctx, cancel := context.WithTimeout(r.ctx, handshakeTimeout)
 			defer cancel()
 			remote, e := r.routeDial(ctx, request{network: "tcp", inbound: t.in.Tag, source: c.RemoteAddr().String(), address: c.LocalAddr().String()})
-			r.logger.Debug("TUN transparent connection", zap.String("source", c.RemoteAddr().String()), zap.String("destination", c.LocalAddr().String()), zap.Error(e))
+			logDebug(r.logger, e, "tun: transparent connection from ", c.RemoteAddr().String(), " to ", c.LocalAddr().String())
 			if e == nil {
 				r.relay(c, remote)
 			}

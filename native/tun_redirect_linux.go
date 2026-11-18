@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 func (t *tunTunnel) redirectRules(table string) string {
@@ -151,7 +149,7 @@ func (t *tunTunnel) configureRedirect() error {
 	previous := t.cleanup
 	t.cleanup = func() {
 		if _, e := tunCommand("/usr/sbin/nft", "", "delete", "table", "inet", table); e != nil {
-			t.runtime.logger.Warn("remove TUN redirect rules", zap.Error(e))
+			logWarn(t.runtime.logger, e, "tun: remove redirect rules")
 		}
 		q.file.Close()
 		previous()

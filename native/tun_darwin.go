@@ -19,8 +19,6 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
-
-	"go.uber.org/zap"
 )
 
 func systemDNSBeforeTUN() []string {
@@ -185,7 +183,7 @@ func openTUN(r *Runtime, in Inbound) (*tunTunnel, error) {
 	t.cleanup = func() {
 		if t.routes != nil {
 			if e := t.routes.replace(nil); e != nil {
-				r.logger.Warn("remove TUN routes", zap.Error(e))
+				logWarn(r.logger, e, "tun: remove routes")
 			}
 		}
 		if in.AutoRoute {
@@ -270,7 +268,7 @@ func (t *tunTunnel) configureDarwinDNS(ctx context.Context, command *exec.Cmd) e
 		select {
 		case <-exited:
 			if sessionErr != nil {
-				t.runtime.logger.Debug("TUN DNS session ended", zap.Error(sessionErr))
+				logDebug(t.runtime.logger, sessionErr, "tun: DNS session ended")
 			}
 		case <-time.After(3 * time.Second):
 			command.Process.Kill()

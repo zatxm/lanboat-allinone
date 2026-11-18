@@ -9,8 +9,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 const xHTTPBudget = 32 << 20
@@ -411,7 +409,7 @@ func (s *xHTTPServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		complete.Store(true)
 	}
 	if e != nil && !errors.Is(e, io.EOF) && s.r.ctx.Err() == nil {
-		s.r.logger.Debug("XHTTP stream ended", zap.String("inbound", s.in.Tag), zap.Error(e))
+		logDebug(s.r.logger, e, s.r.inboundLabel(s.in.Tag), ": XHTTP stream ended")
 	}
 	c.Close()
 }
