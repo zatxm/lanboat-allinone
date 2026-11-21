@@ -216,7 +216,7 @@ func (t *tunTunnel) hijackDNS(destination netip.Addr, port uint16) bool {
 		return false
 	}
 	mode := t.dnsMode()
-	if mode == "disabled" {
+	if mode == "disabled" || mode == "routed" {
 		return false
 	}
 	if len(t.in.DNSAddress) == 0 {

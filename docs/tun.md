@@ -19,7 +19,7 @@ TUN模式接管系统IP流量，适合不能单独设置SOCKS5/HTTP代理的应�
 
 启用`auto_redirect`时，还需要`nft`命令及对应内核功能。作为局域网网关时，需由系统允许IP转发和防火墙转发。普通客户端接管本机流量无需配置为网关。
 
-`dns_mode: "hijack"`接管DNS流量；`dns_mode: "native"`需要可用的systemd-resolved接口。程序不会覆盖`/etc/resolv.conf`。
+`dns_mode: "hijack"`接管DNS流量；`dns_mode: "native"`需要可用的systemd-resolved接口。`dns_mode: "routed"`配置系统DNS，由路由中的`hijack-dns`规则接管查询。可以在该规则前设置应用自身的直连规则，避免引导DNS循环。程序不会覆盖`/etc/resolv.conf`。
 
 ## Windows
 

@@ -97,9 +97,12 @@ func TestTUNModernOptions(t *testing.T) {
 	if _, e := Parse([]byte(`{"inbounds":[{"type":"tun","dns_mode":"native","udp_timeout":"30s","loopback_address":"10.7.0.1"}]}`)); e != nil {
 		t.Fatal(e)
 	}
-	for _, mode := range []string{"disabled", "native", "hijack", ""} {
+	if _, e := Parse([]byte(`{"inbounds":[{"type":"tun","dns_mode":"routed"}]}`)); e != nil {
+		t.Fatal(e)
+	}
+	for _, mode := range []string{"disabled", "native", "hijack", "routed", ""} {
 		tun := &tunTunnel{in: Inbound{DNSMode: mode, AutoRoute: true}, local4: netip.MustParseAddr("172.19.0.1"), hostAddresses: []netip.Addr{netip.MustParseAddr("192.168.1.5")}}
-		if tun.hijackDNS(netip.MustParseAddr("172.19.0.2"), 53) != (mode != "disabled") {
+		if tun.hijackDNS(netip.MustParseAddr("172.19.0.2"), 53) != (mode != "disabled" && mode != "routed") {
 			t.Fatal(mode)
 		}
 		if tun.hijackDNS(netip.MustParseAddr("8.8.8.8"), 53) != (mode == "hijack" || mode == "") {

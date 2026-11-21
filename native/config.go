@@ -877,7 +877,7 @@ func (c Config) validate() error {
 			if in.IPRoute2RuleIndex > 0 && in.IPRoute2RuleIndex < 100 {
 				return errors.New("TUN rule index must be at least100")
 			}
-			if in.DNSMode != "" && in.DNSMode != "disabled" && in.DNSMode != "native" && in.DNSMode != "hijack" {
+			if in.DNSMode != "" && in.DNSMode != "disabled" && in.DNSMode != "native" && in.DNSMode != "hijack" && in.DNSMode != "routed" {
 				return errors.New("invalid TUN dns_mode")
 			}
 			for _, a := range in.DNSAddress {
