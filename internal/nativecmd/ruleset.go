@@ -3,7 +3,7 @@ package nativecmd
 import (
 	"errors"
 	"flag"
-	"github.com/zatxm/lanboat-allinone/native"
+	"github.com/zatxm/lanboat-allinone/v26/native"
 	"io"
 	"os"
 )

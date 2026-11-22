@@ -9,7 +9,7 @@ import (
 
 // Peek without consuming: allocate the large payload buffer only after netpoll
 // reports a packet. Idle NAT mappings then retain neither a 64KiB buffer nor a timer goroutine.
-func masqueWaitPacket(c *net.UDPConn) error {
+func waitUDPReadable(c *net.UDPConn) error {
 	raw, err := c.SyscallConn()
 	if err != nil {
 		return err

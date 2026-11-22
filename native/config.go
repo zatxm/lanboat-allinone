@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const Version = "1.0.0"
+const Version = "26.0.0"
 
 type Config struct {
 	NetworkNamespaces    []NetworkNamespaceOptions    `json:"network_namespaces,omitempty"`

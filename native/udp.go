@@ -398,16 +398,29 @@ func (f *udpFlows) send(key string, q request, payload []byte, reply func([]byte
 					}
 					f.mu.Unlock()
 				}()
-				buffer := packetBuffers.Get().([]byte)
-				defer packetBuffers.Put(buffer)
+				socket := udpReadSocket(c)
+				var scratch []byte
+				if socket == nil {
+					scratch = make([]byte, 65535)
+				}
 				for {
 					_ = c.SetReadDeadline(time.Now().Add(timeout))
-					n, err := c.Read(buffer)
-					if err != nil {
-						return
+					buffer := scratch
+					if socket != nil {
+						if err := waitUDPReadable(socket); err != nil {
+							return
+						}
+						buffer = packetBuffers.Get().([]byte)
 					}
-					f.runtime.down.Add(int64(n))
-					if err := reply(buffer[:n], q.address); err != nil {
+					n, err := c.Read(buffer)
+					if err == nil {
+						f.runtime.down.Add(int64(n))
+						err = reply(buffer[:n], q.address)
+					}
+					if socket != nil {
+						packetBuffers.Put(buffer)
+					}
+					if err != nil {
 						return
 					}
 				}

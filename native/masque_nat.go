@@ -413,7 +413,7 @@ func (e *masqueNATEntry) read() {
 		var err error
 		var b []byte
 		if e.packet != nil {
-			err = masqueWaitPacket(e.packet)
+			err = waitUDPReadable(e.packet)
 			if err == nil {
 				b = packetBuffers.Get().([]byte)
 				count, from, err = e.packet.ReadFromUDPAddrPort(b)

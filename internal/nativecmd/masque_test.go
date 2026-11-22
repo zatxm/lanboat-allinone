@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/zatxm/lanboat-allinone/native"
+	"github.com/zatxm/lanboat-allinone/v26/native"
 )
 
 func TestMasqueProbeCommand(t *testing.T) {

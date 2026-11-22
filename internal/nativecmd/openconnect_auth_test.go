@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zatxm/lanboat-allinone/native"
+	"github.com/zatxm/lanboat-allinone/v26/native"
 )
 
 func TestOpenConnectBrowserOptions(t *testing.T) {

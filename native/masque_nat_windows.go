@@ -6,7 +6,7 @@ import (
 	"unsafe"
 )
 
-func masqueWaitPacket(c *net.UDPConn) error {
+func waitUDPReadable(c *net.UDPConn) error {
 	raw, err := c.SyscallConn()
 	if err != nil {
 		return err

@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/zatxm/lanboat-allinone/native"
+	"github.com/zatxm/lanboat-allinone/v26/native"
 )
 
 func executeMasqueProbe(ctx context.Context, args []string, out io.Writer) error {

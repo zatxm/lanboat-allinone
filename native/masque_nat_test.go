@@ -491,6 +491,33 @@ func TestMasqueNATIdleBuffers(t *testing.T) {
 	}
 }
 
+func TestUDPFlowsDoNotHoldIdlePacketBuffers(t *testing.T) {
+	r := newTestRuntime(t, Config{})
+	flows := newUDPFlows(r)
+	defer flows.Close()
+	flows.direct = true
+	peer := natSocket(t, "127.0.0.1")
+	q := natRequest(peer.LocalAddr().String())
+
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	for i := range 128 {
+		key := fmt.Sprint(i)
+		if err := flows.send(key, q, nil, func([]byte, string) error { return nil }); err != nil {
+			t.Fatal(err)
+		}
+		natRead(t, peer, nil)
+	}
+	runtime.GC()
+	runtime.ReadMemStats(&after)
+	delta := int64(after.HeapAlloc) - int64(before.HeapAlloc)
+	t.Logf("128 idle UDP flows retain %d heap bytes", delta)
+	if delta > 5<<20 {
+		t.Fatal("idle flows retain full UDP buffers", delta)
+	}
+}
+
 func TestMasqueNATGroupSwitch(t *testing.T) {
 	for _, interrupt := range []bool{false, true} {
 		t.Run(fmt.Sprint(interrupt), func(t *testing.T) {

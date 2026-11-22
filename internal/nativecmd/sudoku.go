@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/zatxm/lanboat-allinone/native"
+	"github.com/zatxm/lanboat-allinone/v26/native"
 )
 
 func executeSudokuForward(ctx context.Context, args []string, out io.Writer) error {

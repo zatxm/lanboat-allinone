@@ -7,13 +7,16 @@ import (
 	"runtime/debug"
 	"syscall"
 
-	"github.com/zatxm/lanboat-allinone/internal/nativecmd"
-	"github.com/zatxm/lanboat-allinone/native"
+	"github.com/zatxm/lanboat-allinone/v26/internal/nativecmd"
+	"github.com/zatxm/lanboat-allinone/v26/native"
 )
 
 func main() {
 	if os.Getenv("GOMEMLIMIT") == "" {
 		debug.SetMemoryLimit(64 << 20)
+	}
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(80)
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()

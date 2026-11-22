@@ -4,7 +4,7 @@ package allinone
 import (
 	"context"
 
-	"github.com/zatxm/lanboat-allinone/native"
+	"github.com/zatxm/lanboat-allinone/v26/native"
 	"go.uber.org/zap"
 )
 

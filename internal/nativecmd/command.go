@@ -9,7 +9,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/zatxm/lanboat-allinone/native"
+	"github.com/zatxm/lanboat-allinone/v26/native"
 )
 
 // Execute is shared by the standalone command and command-line integration tests.

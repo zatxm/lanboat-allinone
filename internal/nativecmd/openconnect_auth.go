@@ -8,7 +8,7 @@ import (
 	"io"
 	"os/exec"
 
-	"github.com/zatxm/lanboat-allinone/native"
+	"github.com/zatxm/lanboat-allinone/v26/native"
 )
 
 func openConnectBrowser(executable string) native.OpenConnectAuthHandler {

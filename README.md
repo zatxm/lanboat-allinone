@@ -24,7 +24,7 @@
 
 [下载、校验和运行说明](docs/releases.md)。Linux/macOS下载后需先执行`chmod +x 文件名`，然后按配置启动。
 
-也可使用Go1.27.3或更新版本从源码构建：
+也可使用Go1.27.4或更新版本从源码构建：
 
 ```bash
 git clone https://github.com/zatxm/lanboat-allinone.git

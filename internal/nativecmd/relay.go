@@ -8,7 +8,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/zatxm/lanboat-allinone/native"
+	"github.com/zatxm/lanboat-allinone/v26/native"
 )
 
 func executeRelayBind(ctx context.Context, args []string, out io.Writer) error {
