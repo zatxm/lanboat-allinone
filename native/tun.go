@@ -73,6 +73,7 @@ type tunTunnel struct {
 	refreshEgress    func() error
 	networkEvents    <-chan struct{}
 	networkKey       string
+	dnsOwner         string
 	monitor          func()
 	tpListener       net.Listener
 }
@@ -83,15 +84,24 @@ func (r *Runtime) startTUN(in Inbound) (*tunTunnel, error) {
 	if err != nil {
 		return nil, err
 	}
-	t, e := openTUN(r, in)
+	var t *tunTunnel
+	var e error
+	attachment, _ := r.ctx.Value(desktopTUNKey{}).(*desktopTUNAttachment)
+	if attachment != nil && in.Tag == "tun-in" {
+		t, e = r.attachDesktopTUN(in, attachment)
+	} else {
+		t, e = openTUN(r, in)
+	}
 	if e != nil {
 		return nil, e
 	}
 	t.ctx, t.cancel = context.WithCancel(r.ctx)
 	t.installRouteRefresh()
-	if e = t.configureDNS(); e != nil {
-		t.close()
-		return nil, e
+	if attachment == nil || in.Tag != "tun-in" {
+		if e = t.configureDNS(); e != nil {
+			t.close()
+			return nil, e
+		}
 	}
 	if e = t.configureMonitor(); e != nil {
 		t.close()

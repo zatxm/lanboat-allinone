@@ -48,7 +48,7 @@ func (t *tunTunnel) configureMonitor() error {
 	t.cleanup = func() { cancel(); previous() }
 	t.networkEvents = events
 	t.refreshEgress = func() error {
-		if e := t.runtime.refreshWindowsEgress(t.device.(*wintunDevice).luid); e != nil {
+		if e := t.runtime.refreshWindowsEgress(t.windowsTUNLUID()); e != nil {
 			return e
 		}
 		t.refreshNetworkDNS()

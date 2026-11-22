@@ -123,7 +123,15 @@ func (r *Runtime) socketControlFor(o DialOptions, network, address string, raw s
 	var optionErr error
 	err := raw.Control(func(fd uintptr) {
 		if mark != 0 {
-			optionErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, 36, int(mark))
+			var a *desktopTUNAttachment
+			if r.ctx != nil {
+				a, _ = r.ctx.Value(desktopTUNKey{}).(*desktopTUNAttachment)
+			}
+			if a != nil && a.protect != nil && mark == a.info.Mark {
+				optionErr = a.protect(fd)
+			} else {
+				optionErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, 36, int(mark))
+			}
 		}
 		if optionErr == nil && ifaceName != "" {
 			optionErr = syscall.SetsockoptString(int(fd), syscall.SOL_SOCKET, syscall.SO_BINDTODEVICE, ifaceName)

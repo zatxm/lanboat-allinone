@@ -87,9 +87,13 @@ func (t *tunTunnel) blockDNSLeak() error {
 	if code != 0 {
 		return fmt.Errorf("add WFP sublayer: %w", syscall.Errno(code))
 	}
-	exe, e := os.Executable()
-	if e != nil {
-		return e
+	exe := t.dnsOwner
+	if exe == "" {
+		var err error
+		exe, err = os.Executable()
+		if err != nil {
+			return err
+		}
 	}
 	path, _ := syscall.UTF16PtrFromString(exe)
 	var app *wfpBlob
