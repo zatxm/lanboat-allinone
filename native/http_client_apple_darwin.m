@@ -5,7 +5,10 @@
 #include <string.h>
 #import <Security/Security.h>
 #import <Network/Network.h>
+#import <TargetConditionals.h>
+#if TARGET_OS_OSX
 #import <CoreWLAN/CoreWLAN.h>
+#endif
 #import "http_client_apple.h"
 extern void lanboatAppleHeaders(uintptr_t,int,char *,size_t);
 extern int lanboatAppleData(uintptr_t,void *,size_t);
@@ -67,7 +70,7 @@ void *lanboat_apple_session(int port,const char *user,const char *password,int m
   config.URLCredentialStorage=nil;config.URLCache=nil;config.HTTPCookieStorage=nil;config.HTTPShouldSetCookies=NO;config.HTTPMaximumConnectionsPerHost=4;
   config.timeoutIntervalForRequest=30;config.timeoutIntervalForResource=300;
   config.connectionProxyDictionary=@{@"HTTPEnable":@YES,@"HTTPProxy":@"127.0.0.1",@"HTTPPort":@(port),@"HTTPSEnable":@YES,@"HTTPSProxy":@"127.0.0.1",@"HTTPSPort":@(port)};
-  if(@available(macOS 10.15,*)){config.TLSMinimumSupportedProtocolVersion=minimum;config.TLSMaximumSupportedProtocolVersion=maximum;}
+  if(@available(macOS 10.15,iOS 13.0,*)){config.TLSMinimumSupportedProtocolVersion=minimum;config.TLSMaximumSupportedProtocolVersion=maximum;}
   NSOperationQueue *queue=[NSOperationQueue new];queue.maxConcurrentOperationCount=1;
   delegate.session=[NSURLSession sessionWithConfiguration:config delegate:delegate delegateQueue:queue];
   return (__bridge_retained void *)delegate;
@@ -97,9 +100,11 @@ void lanboat_apple_release(void *pointer){CFRelease(pointer);}
 char *lanboat_apple_network(void) {
  @autoreleasepool {
   NSMutableDictionary *result=[NSMutableDictionary dictionary];
+#if TARGET_OS_OSX
   CWInterface *wifi=[[CWWiFiClient sharedWiFiClient] interface];
   if(wifi.ssid){result[@"ssid"]=wifi.ssid;}if(wifi.bssid){result[@"bssid"]=wifi.bssid;}
-  if(@available(macOS 10.15,*)){
+#endif
+  if(@available(macOS 10.15,iOS 13.0,*)){
    nw_path_monitor_t monitor=nw_path_monitor_create();
    dispatch_semaphore_t ready=dispatch_semaphore_create(0);
    nw_path_monitor_set_queue(monitor,dispatch_get_global_queue(QOS_CLASS_UTILITY,0));

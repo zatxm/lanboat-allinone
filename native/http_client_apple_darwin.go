@@ -4,7 +4,8 @@ package native
 
 /*
 #cgo CFLAGS: -x objective-c -fobjc-arc -fblocks
-#cgo LDFLAGS: -framework Foundation -framework Security -framework Network -framework CoreWLAN
+#cgo LDFLAGS: -framework Foundation -framework Security -framework Network
+#cgo darwin,!ios LDFLAGS: -framework CoreWLAN
 #include <stdlib.h>
 #include "http_client_apple.h"
 */
