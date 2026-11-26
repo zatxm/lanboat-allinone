@@ -124,7 +124,7 @@ func (p *snellPool) dial(ctx context.Context, address string) (net.Conn, error) 
 				raw.Close()
 				return nil, e
 			}
-			stream = newSnellConn(secured, p.outbound.Password, p.outbound.Version, &p.runtime.replay)
+			stream = newSnellConn(secured, p.outbound.Password, p.outbound.Version, p.outbound.SnellMode, &p.runtime.replay)
 			p.mu.Lock()
 			if p.closed || len(p.all) >= 128 {
 				p.mu.Unlock()
@@ -138,7 +138,7 @@ func (p *snellPool) dial(ctx context.Context, address string) (net.Conn, error) 
 			stream.SetDeadline(d)
 		}
 		stop := context.AfterFunc(ctx, func() { stream.Close() })
-		reply, e := snellClientStream(stream, p.outbound, address, false)
+		reply, e := snellClientStream(stream, address, false)
 
 		stop()
 		if e != nil {
@@ -199,7 +199,7 @@ func (c *snellPooledConn) Close() error {
 		}
 	}
 	stream.rmu.Lock()
-	clean := stream.rerr == io.EOF && len(stream.pending) == 0
+	clean := stream.rerr == io.EOF && len(stream.pending) == 0 && (stream.v6 == nil || stream.v6.readEnded)
 	if clean {
 		stream.rerr = nil
 	}

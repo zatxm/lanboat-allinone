@@ -18,7 +18,7 @@
 | WireGuard | [客户端](../examples/independent-wireguard-client.json)、[服务端](../examples/independent-wireguard-server.json)、[端点](../examples/independent-wireguard-endpoint.json) |
 | AmneziaWG | [客户端](../examples/independent-amnezia-client.json)、[3.x配置](../examples/independent-amnezia3-client.json) |
 | Brook | [客户端](../examples/independent-brook-client.json)、[QUIC](../examples/independent-brook-quic-client.json) |
-| Snell | [服务端](../examples/independent-snell-server.json) |
+| Snell | [v6 客户端](../examples/independent-snell6-client.json)、[v6 服务端](../examples/independent-snell6-server.json)、[v4 服务端](../examples/independent-snell-server.json) |
 | Mieru | [TCP](../examples/independent-mieru-tcp-client.json)、[UDP](../examples/independent-mieru-udp-client.json) |
 | OpenConnect | [客户端](../examples/independent-openconnect-client.json)、[交互认证](../examples/independent-openconnect-interactive-client.json) |
 | TrustTunnel | [客户端](../examples/independent-trusttunnel-h2-client.json) |
@@ -31,6 +31,18 @@
 | ShadowTLS | [v1](../examples/independent-shadowtls1-client.json)、[v2](../examples/independent-shadowtls2-client.json)、[v3](../examples/independent-shadowtls3-client.json) |
 
 SOCKS5、HTTP/HTTPS及Mixed入站可提供本地代理；AnyTLS等其他类型和可用算法由`lanboat-allinone protocols`列出。
+
+## Snell v6
+
+入站和出站均使用 `"type": "snell"` 和 `"version": "6"`。`password` 对应 Snell 服务端的 PSK，长度为 12–255 字节。客户端和服务端的 `mode` 必须一致。
+
+| `mode` | 线路格式 |
+| --- | --- |
+| `default`（可省略） | AES-128-GCM 加密，流量整形由 PSK 派生 |
+| `unshaped` | AES-128-GCM 加密 |
+| `unsafe-raw` | 明文且无 PSK 认证，仅限可信网络或已有安全隧道 |
+
+v6 支持 TCP 和 UDP over TCP。出站可通过 `"multiplex": {"enabled": true}` 复用 TCP 连接。Snell 的 QUIC Proxy Mode 属于 v5，旧版 `obfs` 和 `obfs_param` 属于 v1–v5。参考 [Surge Snell 发布说明](https://kb.nssurge.com/surge-knowledge-base/release-notes/snell)。
 
 ## 传输与附加设置
 

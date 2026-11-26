@@ -1,0 +1,4 @@
+{
+  "inbounds": [{"type": "snell", "tag": "server", "listen": "127.0.0.1", "listen_port": 8388, "password": "replace-with-your-password", "version": "6", "mode": "default"}],
+  "outbounds": [{"type": "direct", "tag": "direct"}]
+}

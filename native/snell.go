@@ -21,6 +21,7 @@ type snellConn struct {
 	key             *ssKey
 	replay          *replayWindow
 	version         int
+	v6              *snellV6State
 	rmu, wmu        sync.Mutex
 	r, w            cipher.AEAD
 	rnonce, wnonce  [24]byte
@@ -38,8 +39,37 @@ func snellVersion(s string) int {
 	n, _ := strconv.Atoi(s)
 	return n
 }
-func newSnellConn(c net.Conn, password, version string, replay *replayWindow) *snellConn {
-	return &snellConn{Conn: c, version: snellVersion(version), key: &ssKey{method: "snell-" + version, master: []byte(password)}, replay: replay}
+
+func validateSnell(version, password, mode string, obfs Obfuscation, obfsParam string) error {
+	n := snellVersion(version)
+	if n < 1 || n > 6 || password == "" {
+		return errors.New("Snell requires a password and version 1-6")
+	}
+	if n == 6 {
+		if len(password) < 12 || len(password) > 255 {
+			return errors.New("Snell v6 requires a password of 12-255 bytes")
+		}
+		switch mode {
+		case "", "default", "unshaped", "unsafe-raw":
+		default:
+			return errors.New("Snell v6 mode must be default, unshaped or unsafe-raw")
+		}
+	} else if mode != "" {
+		return errors.New("mode requires Snell v6")
+	}
+	_, err := obfs.snellOptions(obfsParam, version)
+	return err
+}
+
+func newSnellConn(c net.Conn, password, version, mode string, replay *replayWindow) *snellConn {
+	stream := &snellConn{Conn: c, version: snellVersion(version), key: &ssKey{method: "snell-" + version, master: []byte(password)}, replay: replay}
+	if stream.version == 6 {
+		stream.v6 = &snellV6State{raw: mode == "unsafe-raw"}
+		if mode == "" || mode == "default" {
+			stream.v6.profile = newV6Profile(stream.key.master)
+		}
+	}
+	return stream
 }
 func (c *snellConn) aead(salt []byte) (cipher.AEAD, error) {
 	key := snellKey(c.key.master, salt)
@@ -72,6 +102,9 @@ func (c *snellConn) Read(b []byte) (int, error) {
 	return n, nil
 }
 func (c *snellConn) readRecord() ([]byte, error) {
+	if c.v6 != nil {
+		return c.readV6Record()
+	}
 	var salt []byte
 	if c.r == nil {
 		salt = make([]byte, 16)
@@ -178,6 +211,9 @@ func (c *snellConn) write(b []byte, packet bool) (int, error) {
 	if c.ended {
 		return 0, io.ErrClosedPipe
 	}
+	if c.v6 != nil {
+		return c.writeV6(b, packet)
+	}
 	padding, limit := 0, 0x3fff
 	if c.version >= 4 {
 		if c.w == nil {
@@ -221,7 +257,13 @@ func (c *snellConn) CloseWrite() error {
 		return c.werr
 	}
 	c.ended = true
-	if c.werr == nil {
+	if c.werr != nil {
+		return c.werr
+	}
+	if c.v6 != nil {
+		c.v6PayloadLimit(time.Now())
+		c.werr = c.writeV6Record(nil)
+	} else {
 		c.werr = c.record(nil, 0)
 	}
 	return c.werr
@@ -237,8 +279,22 @@ func (c *snellReplyConn) response() error {
 	c.once.Do(func() {
 		var response [1]byte
 		_, c.err = io.ReadFull(c.snellConn, response[:])
-		if c.err == nil && response[0] != 0 {
-			c.err = fmt.Errorf("Snell request rejected: %d", response[0])
+		if c.err != nil || response[0] == 0 {
+			return
+		}
+		c.err = fmt.Errorf("Snell request rejected: %d", response[0])
+		if c.v6 != nil && response[0] == 2 {
+			var detail [2]byte
+			if _, err := io.ReadFull(c.snellConn, detail[:]); err != nil {
+				c.err = err
+				return
+			}
+			message := make([]byte, detail[1])
+			if _, err := io.ReadFull(c.snellConn, message); err != nil {
+				c.err = err
+				return
+			}
+			c.err = fmt.Errorf("Snell request rejected (%d): %q", detail[0], message)
 		}
 	})
 	return c.err
@@ -251,9 +307,9 @@ func (c *snellReplyConn) Read(b []byte) (int, error) {
 }
 
 func snellClient(c net.Conn, o Outbound, address string, udp bool, replay *replayWindow) (net.Conn, error) {
-	return snellClientStream(newSnellConn(c, o.Password, o.Version, replay), o, address, udp)
+	return snellClientStream(newSnellConn(c, o.Password, o.Version, o.SnellMode, replay), address, udp)
 }
-func snellClientStream(stream *snellConn, o Outbound, address string, udp bool) (net.Conn, error) {
+func snellClientStream(stream *snellConn, address string, udp bool) (net.Conn, error) {
 	header := []byte{1, 6, 0}
 	if !udp {
 		host, portText, err := net.SplitHostPort(address)
@@ -271,7 +327,7 @@ func snellClientStream(stream *snellConn, o Outbound, address string, udp bool) 
 		header = append([]byte{1, cmd, 0, byte(len(host))}, host...)
 		header = binary.BigEndian.AppendUint16(header, uint16(port))
 	}
-	if err := writeAll(stream, header); err != nil {
+	if _, err := stream.write(header, stream.v6 != nil); err != nil {
 		return nil, err
 	}
 	reply := &snellReplyConn{snellConn: stream}
@@ -358,14 +414,23 @@ func (r *Runtime) serveSnell(in Inbound, c net.Conn, q request) error {
 	if err != nil {
 		return err
 	}
-	stream := newSnellConn(wrapped, in.Password, in.Version, &r.replay)
+	stream := newSnellConn(wrapped, in.Password, in.Version, in.SnellMode, &r.replay)
 	for {
 		var header [3]byte
-		if _, err := io.ReadFull(stream, header[:]); err != nil {
+		if _, err := io.ReadFull(stream, header[:2]); err != nil {
 			return err
 		}
-		if header[0] != 1 || header[1] != 1 && header[1] != 5 && header[1] != 6 {
+		if header[0] != 1 {
 			return errors.New("invalid Snell request")
+		}
+		if stream.v6 != nil && header[1] == 0 {
+			return writeAll(stream, []byte{1})
+		}
+		if header[1] != 1 && header[1] != 5 && header[1] != 6 {
+			return errors.New("invalid Snell request")
+		}
+		if _, err := io.ReadFull(stream, header[2:]); err != nil {
+			return err
 		}
 		if _, err := io.CopyN(io.Discard, stream, int64(header[2])); err != nil {
 			return err
@@ -398,7 +463,12 @@ func (r *Runtime) serveSnell(in Inbound, c net.Conn, q request) error {
 		q.address = portAddress(string(dest[:len(dest)-2]), port)
 		remote, err := r.routeDial(r.ctx, q)
 		if err != nil {
-			_ = writeAll(stream, []byte{2})
+			if stream.v6 != nil {
+				const message = "Connection failed"
+				_ = writeAll(stream, append([]byte{2, 0x64, byte(len(message))}, message...))
+			} else {
+				_ = writeAll(stream, []byte{2})
+			}
 			return err
 		}
 		if err := writeAll(stream, []byte{0}); err != nil {
@@ -410,7 +480,7 @@ func (r *Runtime) serveSnell(in Inbound, c net.Conn, q request) error {
 			return nil
 		}
 		stream.rmu.Lock()
-		if stream.rerr != io.EOF {
+		if stream.rerr != io.EOF || stream.v6 != nil && !stream.v6.readEnded {
 			stream.rmu.Unlock()
 			return stream.rerr
 		}

@@ -22,6 +22,9 @@ type snellObfsOptions struct {
 }
 
 func (o Obfuscation) snellOptions(host, version string) (snellObfsOptions, error) {
+	if snellVersion(version) == 6 && (o != "" && o != "none" || host != "") {
+		return snellObfsOptions{}, errors.New("legacy obfs requires Snell version 1-5")
+	}
 	v := snellObfsOptions{Host: host, Path: "/"}
 	if o == "" || o == "none" {
 		return v, nil

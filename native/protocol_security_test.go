@@ -22,25 +22,27 @@ func (c memoryNetConn) SetWriteDeadline(time.Time) error { return nil }
 func readerConn(b []byte) net.Conn                       { return memoryNetConn{bytes.NewReader(b), io.Discard} }
 
 func TestSnellReplayAndTamper(t *testing.T) {
-	for _, version := range []string{"1", "2", "3", "4", "5"} {
-		t.Run(version, func(t *testing.T) {
+	for _, tc := range []struct{ version, mode string }{
+		{"1", ""}, {"2", ""}, {"3", ""}, {"4", ""}, {"5", ""}, {"6", "default"}, {"6", "unshaped"},
+	} {
+		t.Run(tc.version+"/"+tc.mode, func(t *testing.T) {
 			var wire bytes.Buffer
-			client := newSnellConn(memoryNetConn{bytes.NewReader(nil), &wire}, "private", version, &replayWindow{})
+			client := newSnellConn(memoryNetConn{bytes.NewReader(nil), &wire}, snellV6TestPassword, tc.version, tc.mode, &replayWindow{})
 			if err := writeAll(client, []byte("authenticated record")); err != nil {
 				t.Fatal(err)
 			}
 			replay := &replayWindow{}
-			first := newSnellConn(readerConn(wire.Bytes()), "private", version, replay)
+			first := newSnellConn(readerConn(wire.Bytes()), snellV6TestPassword, tc.version, tc.mode, replay)
 			if _, err := first.readRecord(); err != nil {
 				t.Fatal(err)
 			}
-			duplicate := newSnellConn(readerConn(wire.Bytes()), "private", version, replay)
+			duplicate := newSnellConn(readerConn(wire.Bytes()), snellV6TestPassword, tc.version, tc.mode, replay)
 			if _, err := duplicate.readRecord(); err == nil {
 				t.Fatal("Snell replay accepted")
 			}
 			corrupt := append([]byte{}, wire.Bytes()...)
 			corrupt[len(corrupt)-1] ^= 1
-			if _, err := newSnellConn(readerConn(corrupt), "private", version, &replayWindow{}).readRecord(); err == nil {
+			if _, err := newSnellConn(readerConn(corrupt), snellV6TestPassword, tc.version, tc.mode, &replayWindow{}).readRecord(); err == nil {
 				t.Fatal("Snell tamper accepted")
 			}
 		})
@@ -111,6 +113,6 @@ func FuzzSSRAuthentication(f *testing.F) {
 func FuzzSnellRecord(f *testing.F) {
 	f.Add(bytes.Repeat([]byte{0}, 64), byte(4))
 	f.Fuzz(func(t *testing.T, data []byte, version byte) {
-		_, _ = newSnellConn(readerConn(data), "private", string([]byte{'1' + version%5}), &replayWindow{}).readRecord()
+		_, _ = newSnellConn(readerConn(data), "private", string([]byte{'1' + version%6}), "", &replayWindow{}).readRecord()
 	})
 }

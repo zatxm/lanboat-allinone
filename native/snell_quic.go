@@ -52,7 +52,7 @@ func snellQUICSealSalt(password, address string, b, salt []byte) ([]byte, error)
 	if len(plain)+55 > 65507 {
 		return nil, errors.New("Snell QUIC packet too large")
 	}
-	stream := newSnellConn(nil, password, "5", nil)
+	stream := newSnellConn(nil, password, "5", "", nil)
 	aead, e := stream.aead(salt)
 	if e != nil {
 		return nil, e
@@ -67,7 +67,7 @@ func snellQUICOpen(password string, b []byte, replay *replayWindow) (string, []b
 	if len(b) < 61 {
 		return "", nil, io.ErrUnexpectedEOF
 	}
-	stream := newSnellConn(nil, password, "5", nil)
+	stream := newSnellConn(nil, password, "5", "", nil)
 	aead, e := stream.aead(b[:16])
 	if e != nil {
 		return "", nil, e

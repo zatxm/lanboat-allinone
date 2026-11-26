@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+const snellV6TestPassword = "snell-v6-test-key"
+
 func TestSnellIndependentTCPUDP(t *testing.T) {
 	for _, version := range []string{"1", "2", "3", "4", "5"} {
 		t.Run(version, func(t *testing.T) {
@@ -29,6 +31,19 @@ func TestSnellIndependentTCPUDP(t *testing.T) {
 			}
 		})
 	}
+	t.Run("6", func(t *testing.T) {
+		for _, mode := range []string{"default", "unshaped", "unsafe-raw"} {
+			t.Run(mode, func(t *testing.T) {
+				in := Inbound{Type: "snell", Tag: "server", Listen: "127.0.0.1", Password: snellV6TestPassword, Version: "6", SnellMode: mode}
+				server := newTestRuntime(t, Config{Inbounds: []Inbound{in}})
+				out := testOutbound(t, in, server.Address("server"))
+				out.Password, out.Version, out.SnellMode = in.Password, in.Version, in.SnellMode
+				client := newTestRuntime(t, Config{Outbounds: []Outbound{out}})
+				assertTCP(t, client)
+				assertUDPSizes(t, client, []int{0, 1, 511, 4096, 60000})
+			})
+		}
+	})
 }
 
 func TestSnellOfficialServer(t *testing.T) {
@@ -36,10 +51,12 @@ func TestSnellOfficialServer(t *testing.T) {
 	if dir == "" {
 		t.Skip("LANBOAT_TEST_SNELL_DIR required for official Snell servers")
 	}
-	for _, version := range []string{"1", "2", "3", "4", "5"} {
+	for _, version := range []string{"1", "2", "3", "4", "5", "6"} {
 		masks := []string{"none", "http"}
 		if version <= "3" {
 			masks = append(masks, "tls")
+		} else if version == "6" {
+			masks = []string{"default", "unshaped", "unsafe-raw"}
 		}
 		for _, mask := range masks {
 			t.Run(version+"/"+mask, func(t *testing.T) {
@@ -50,13 +67,24 @@ func TestSnellOfficialServer(t *testing.T) {
 				if version == "5" {
 					release = "5.0.1"
 				}
+				if version == "6" {
+					release = "6.0.0"
+				}
 				binary := filepath.Join(dir, release, "snell-server")
 				if release == "legacy-server" {
 					binary = filepath.Join(dir, release)
 				}
 				port := unusedPort(t)
 				path := filepath.Join(t.TempDir(), "snell.conf")
-				if err := os.WriteFile(path, fmt.Appendf(nil, "[snell-server]\nlisten = 127.0.0.1:%d\npsk = private\nobfs = %s\n", port, mask), 0600); err != nil {
+				password, option := "private", "obfs"
+				if version == "6" {
+					password, option = snellV6TestPassword, "mode"
+				}
+				config := fmt.Appendf(nil, "[snell-server]\nlisten = 127.0.0.1:%d\npsk = %s\n", port, password)
+				if mask != "none" {
+					config = fmt.Appendf(config, "%s = %s\n", option, mask)
+				}
+				if err := os.WriteFile(path, config, 0600); err != nil {
 					t.Fatal(err)
 				}
 				log, err := os.Create(filepath.Join(t.TempDir(), "server.log"))
@@ -80,23 +108,30 @@ func TestSnellOfficialServer(t *testing.T) {
 				})
 				address := portAddress("127.0.0.1", port)
 				waitPort(t, address)
-				out := Outbound{Type: "snell", Tag: "proxy", Server: "127.0.0.1", ServerPort: port, Password: "private", Version: version, Obfs: Obfuscation(mask), ObfsParam: "example.com"}
-				out.Multiplex.Enabled = version == "2" || version == "4" || version == "5"
+				out := Outbound{Type: "snell", Tag: "proxy", Server: "127.0.0.1", ServerPort: port, Password: password, Version: version}
+				if version == "6" {
+					out.SnellMode = mask
+				} else {
+					out.Obfs, out.ObfsParam = Obfuscation(mask), "example.com"
+				}
+				out.Multiplex.Enabled = version == "2" || version >= "4"
 				client := newTestRuntime(t, Config{Outbounds: []Outbound{out}})
 				assertTCP(t, client)
 				if out.Multiplex.Enabled {
-					assertTCP(t, client)
 					p := client.snellClients[out.Tag]
-					p.mu.Lock()
-					n := len(p.all)
-					p.mu.Unlock()
-					if n != 1 {
-						t.Fatal("official server did not reuse the physical connection", n)
+					first := waitSnellIdle(t, p)
+					assertTCP(t, client)
+					if waitSnellIdle(t, p) != first {
+						t.Fatal("physical Snell connection not reused with the official server")
 					}
 				}
 				if version >= "3" {
 					// Reference servers drop empty UDP; native endpoints test it separately.
-					assertUDPSizes(t, client, []int{1, 511, 1024})
+					sizes := []int{1, 511, 1024}
+					if version == "6" {
+						sizes = append(sizes, 4096)
+					}
+					assertUDPSizes(t, client, sizes)
 				}
 			})
 		}
@@ -104,15 +139,18 @@ func TestSnellOfficialServer(t *testing.T) {
 }
 
 func TestSnellRecordAuthenticationAndHalfClose(t *testing.T) {
-	for _, version := range []string{"1", "2", "3", "4", "5"} {
-		t.Run(version, func(t *testing.T) {
+	for _, tc := range []struct{ version, mode string }{
+		{"1", ""}, {"2", ""}, {"3", ""}, {"4", ""}, {"5", ""},
+		{"6", ""}, {"6", "unshaped"}, {"6", "unsafe-raw"},
+	} {
+		t.Run(tc.version+"/"+tc.mode, func(t *testing.T) {
 			a, b := net.Pipe()
 			defer a.Close()
 			defer b.Close()
 			_ = a.SetDeadline(time.Now().Add(3 * time.Second))
 			_ = b.SetDeadline(time.Now().Add(3 * time.Second))
-			x := newSnellConn(a, "key", version, &replayWindow{})
-			y := newSnellConn(b, "key", version, &replayWindow{})
+			x := newSnellConn(a, snellV6TestPassword, tc.version, tc.mode, &replayWindow{})
+			y := newSnellConn(b, snellV6TestPassword, tc.version, tc.mode, &replayWindow{})
 			payload := bytes.Repeat([]byte("independent Snell"), 1000)
 			done := make(chan error, 1)
 			go func() {
@@ -307,40 +345,25 @@ func TestSnellObfuscationVersionCompatibility(t *testing.T) {
 }
 
 func TestSnellPoolReuseAndExpiry(t *testing.T) {
-	for _, version := range []string{"2", "4", "5"} {
+	for _, version := range []string{"2", "4", "5", "6"} {
 		t.Run(version, func(t *testing.T) {
 			in := Inbound{Type: "snell", Tag: "server", Listen: "127.0.0.1", Password: "private", Version: version}
+			if version == "6" {
+				in.Password = snellV6TestPassword
+			}
 			server := newTestRuntime(t, Config{Inbounds: []Inbound{in}})
 			out := testOutbound(t, in, server.Address("server"))
-			out.Version = version
+			out.Version, out.Password = version, in.Password
 			out.Multiplex.Enabled = true
 			out.IdleSessionTimeout = "100ms"
 			client := newTestRuntime(t, Config{Outbounds: []Outbound{out}})
 			p := client.snellClients[out.Tag]
-			var original *snellConn
-			for range 8 {
+			assertTCP(t, client)
+			first := waitSnellIdle(t, p)
+			for range 7 {
 				assertTCP(t, client)
-				limit := time.Now().Add(time.Second)
-				for {
-					p.mu.Lock()
-					idle := len(p.idle)
-					if idle == 1 {
-						current := p.idle[0].stream
-						if original == nil {
-							original = current
-						} else if original != current {
-							p.mu.Unlock()
-							t.Fatal("physical Snell connection not reused")
-						}
-					}
-					p.mu.Unlock()
-					if idle == 1 {
-						break
-					}
-					if time.Now().After(limit) {
-						t.Fatal("session not returned to pool")
-					}
-					time.Sleep(time.Millisecond)
+				if waitSnellIdle(t, p) != first {
+					t.Fatal("physical Snell connection not reused")
 				}
 			}
 			time.Sleep(150 * time.Millisecond)
@@ -351,6 +374,23 @@ func TestSnellPoolReuseAndExpiry(t *testing.T) {
 			}
 		})
 	}
+}
+
+func waitSnellIdle(t *testing.T, p *snellPool) *snellConn {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		p.mu.Lock()
+		if len(p.idle) == 1 && len(p.all) == 1 {
+			stream := p.idle[0].stream
+			p.mu.Unlock()
+			return stream
+		}
+		p.mu.Unlock()
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("Snell connection did not return to the pool")
+	return nil
 }
 
 func waitPacketPort(t *testing.T, address string) {

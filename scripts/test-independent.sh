@@ -38,8 +38,8 @@ if [[ ! -x ${LANBOAT_TEST_SUDOKU:-} ]]; then
  echo 'LANBOAT_TEST_SUDOKU must be the pinned external Sudoku reference.' >&2
  exit 1
 fi
-if [[ -z ${LANBOAT_TEST_SNELL_DIR:-} || ! -x ${LANBOAT_TEST_SNELL_DIR:-}/4.1.1/snell-server || ! -x ${LANBOAT_TEST_SNELL_DIR:-}/5.0.1/snell-server || ! -x ${LANBOAT_TEST_SNELL_DIR:-}/legacy-server ]]; then
-  echo 'Set LANBOAT_TEST_SNELL_DIR to the official Snell reference directory (legacy-server, 4.1.1, 5.0.1).' >&2
+if [[ -z ${LANBOAT_TEST_SNELL_DIR:-} || ! -x ${LANBOAT_TEST_SNELL_DIR:-}/4.1.1/snell-server || ! -x ${LANBOAT_TEST_SNELL_DIR:-}/5.0.1/snell-server || ! -x ${LANBOAT_TEST_SNELL_DIR:-}/6.0.0/snell-server || ! -x ${LANBOAT_TEST_SNELL_DIR:-}/legacy-server ]]; then
+  echo 'Set LANBOAT_TEST_SNELL_DIR to the official Snell reference directory (legacy-server, 4.1.1, 5.0.1, 6.0.0).' >&2
   exit 1
 fi
 if [[ -z ${LANBOAT_TEST_SSR:-} || ! -f ${LANBOAT_TEST_SSR:-}/shadowsocks/server.py ]]; then

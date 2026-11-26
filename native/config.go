@@ -166,6 +166,7 @@ type Inbound struct {
 	Method                        string       `json:"method,omitempty"`
 	OTA                           bool         `json:"ota,omitempty"`
 	Version                       string       `json:"version,omitempty"`
+	SnellMode                     string       `json:"mode,omitempty"`
 	Password                      string       `json:"password,omitempty"`
 	TLS                           TLSOptions   `json:"tls,omitempty"`
 	Transport                     Transport    `json:"transport,omitzero"`
@@ -231,6 +232,7 @@ type Outbound struct {
 	Method                   string           `json:"method,omitempty"`
 	OTA                      bool             `json:"ota,omitempty"`
 	Version                  string           `json:"version,omitempty"`
+	SnellMode                string           `json:"mode,omitempty"`
 	Security                 string           `json:"security,omitempty"`
 	AlterID                  int              `json:"alter_id,omitempty"`
 	IdleSessionTimeout       string           `json:"idle_session_timeout,omitempty"`
@@ -615,12 +617,11 @@ func (c Config) validate() error {
 			return errors.New("SOCKS version must be 5")
 		}
 		if o.Type == "snell" {
-			if _, e := o.Obfs.snellOptions(o.ObfsParam, o.Version); e != nil {
-				return e
+			if err := validateSnell(o.Version, o.Password, o.SnellMode, o.Obfs, o.ObfsParam); err != nil {
+				return err
 			}
-		}
-		if o.Type == "snell" && (snellVersion(o.Version) < 1 || snellVersion(o.Version) > 5 || o.Password == "") {
-			return errors.New("Snell requires a password and version 1-5")
+		} else if o.SnellMode != "" {
+			return errors.New("mode requires Snell v6")
 		}
 		if o.Type == "shadowsocks" {
 			if _, err := newSSKey(o.Method, o.Password); err != nil {
@@ -641,7 +642,7 @@ func (c Config) validate() error {
 			return fmt.Errorf("%s requires TLS and a password", o.Type)
 		}
 		if o.Multiplex.Enabled && o.Type == "snell" && snellVersion(o.Version) != 2 && snellVersion(o.Version) < 4 {
-			return errors.New("Snell multiplex requires version 2, 4 or 5")
+			return errors.New("Snell multiplex requires version 2 or 4-6")
 		}
 		if err := o.Multiplex.validate(o.Type, false); err != nil {
 			return fmt.Errorf("outbound %q: %w", o.Tag, err)
@@ -1027,12 +1028,11 @@ func (c Config) validate() error {
 			}
 		}
 		if in.Type == "snell" {
-			if _, e := in.Obfs.snellOptions(in.ObfsParam, in.Version); e != nil {
-				return e
+			if err := validateSnell(in.Version, in.Password, in.SnellMode, in.Obfs, in.ObfsParam); err != nil {
+				return err
 			}
-		}
-		if in.Type == "snell" && (snellVersion(in.Version) < 1 || snellVersion(in.Version) > 5 || in.Password == "") {
-			return errors.New("Snell requires a password and version 1-5")
+		} else if in.SnellMode != "" {
+			return errors.New("mode requires Snell v6")
 		}
 		if in.Type == "hysteria" {
 			if in.Protocol != "" && in.Protocol != "udp" && in.Protocol != "wechat-video" && in.Protocol != "faketcp" {
